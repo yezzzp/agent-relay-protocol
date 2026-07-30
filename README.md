@@ -68,7 +68,7 @@ una skill que no sea suya.
 |---|---|
 | `bash`, `git` | núcleo — imprescindible |
 | `jq`, `python3` | puente de cuota |
-| `uv` | Graphify, opcional (análisis de impacto en `plan-review`) |
+| `uv` | Graphify, opcional (análisis de dependencias) |
 
 ---
 
@@ -120,11 +120,12 @@ Se invocan con `/nombre` en Claude Code y `$nombre` en Codex CLI.
 
 | Skill | Qué hace |
 |---|---|
-| `plan-auto` | Planifica y ejecuta de corrido, sin pedir confirmación. |
-| `plan-review` | Escribe el plan en disco y **se detiene** hasta que lo apruebes. |
 | `relay` | Escribe el handoff de la tarea en curso y para. |
 | `resume` | Retoma una tarea que otro agente dejó a medias. |
 | `commit` | Commits en Conventional Commits, atómicos y verificados. |
+
+ARP no trae skills de planificación a propósito: el modo plan de Claude Code ya lo
+hace mejor y con mejor integración. Duplicarlo solo añadía contexto en cada turno.
 
 ### El task file solo existe si hay relevo
 
@@ -248,7 +249,7 @@ agent-relay-protocol/
     ├── AGENTS.md           plantilla canónica de 8 secciones
     ├── arp-block.md        la sección 8, regenerada en cada agent-init
     ├── task.md             plantilla de task file
-    ├── skills/             las 5 skills
+    ├── skills/             relay, resume, commit
     └── stacks/             detección: uv, poetry, pnpm, npm, go, rust
 ```
 

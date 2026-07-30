@@ -234,7 +234,7 @@ fi
 
 # --- graphify (opcional) -----------------------------------------------------
 say ""
-say "${C_BOLD}Graphify${C_OFF} ${C_DIM}(opcional — análisis de impacto en plan-review)${C_OFF}"
+say "${C_BOLD}Graphify${C_OFF} ${C_DIM}(opcional — análisis de dependencias)${C_OFF}"
 if command -v graphify >/dev/null 2>&1; then
   ok "ya instalado ($(graphify --version 2>/dev/null | head -1))"
 elif [ "$HAS_UV" -eq 0 ]; then
@@ -273,8 +273,8 @@ say "  ${C_BOLD}agent-init${C_OFF}   en cualquier proyecto, para adoptarlo"
 say "  ${C_BOLD}arp status${C_OFF}   qué hay instalado"
 say "  ${C_BOLD}arp update${C_OFF}   actualizar desde el remoto"
 say ""
-say "  Claude: /relay  /resume  /plan-auto  /plan-review  /commit"
-say "  Codex:  \$relay  \$resume  \$plan-auto  \$plan-review  \$commit"
+say "  Claude: /relay  /resume  /commit"
+say "  Codex:  \$relay  \$resume  \$commit"
 say ""
 say "${C_DIM}Enlazado por symlink desde $REPO_DIR${C_OFF}"
 say "${C_DIM}Lo que edites ahí tiene efecto inmediato. No muevas la carpeta.${C_OFF}"
