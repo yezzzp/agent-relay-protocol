@@ -1,0 +1,4 @@
+# ARP:BEGIN
+# Agent Relay Protocol — bloque gestionado por agent-init
+graphify-out/
+# ARP:END

@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+#
+# arp — gestiona la instalación del Agent Relay Protocol.
+#
+# El repo vive donde lo clonaste y todo se enlaza por symlink desde ahí, así
+# que lo que edites en él tiene efecto inmediato.
+#
+# Uso:
+#   arp status      qué hay instalado y dónde
+#   arp update      git pull en el repo y reinstala
+#   arp uninstall   quita los enlaces y los hooks (NO borra el repo)
+#   arp where       imprime la ruta del repo
+
+set -euo pipefail
+
+# Resuelve el symlink de ~/.local/bin hasta el repo real.
+ARP_HOME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+BIN_DIR="$HOME/.local/bin"
+
+C_DIM=$'\033[2m'; C_OK=$'\033[32m'; C_WARN=$'\033[33m'
+C_ERR=$'\033[31m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+ok()   { printf '%s✓%s %s\n' "$C_OK"   "$C_OFF" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_WARN" "$C_OFF" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_ERR"  "$C_OFF" "$*" >&2; }
+
+case "${1:-status}" in
+
+  where) printf '%s\n' "$ARP_HOME" ;;
+
+  status)
+    printf '%sAgent Relay Protocol%s\n' "$C_BOLD" "$C_OFF"
+    if [ -d "$ARP_HOME" ]; then
+      ok "instalado en $ARP_HOME"
+      if [ -d "$ARP_HOME/.git" ]; then
+        d="$(git -C "$ARP_HOME" status --porcelain 2>/dev/null | wc -l)"
+        printf '  %s%s%s%s\n' "$C_DIM" \
+          "$(git -C "$ARP_HOME" log -1 --format='%h %s (%cr)' 2>/dev/null || echo 'sin commits')" \
+          "$([ "$d" -gt 0 ] && printf ' · %s archivo(s) sin commitear' "$d")" "$C_OFF"
+      else
+        printf '  %sno es un repo git%s\n' "$C_DIM" "$C_OFF"
+      fi
+    else
+      err "no instalado"; exit 1
+    fi
+    printf '\n%sComandos%s\n' "$C_BOLD" "$C_OFF"
+    for c in agent-init arp arp-hooks; do
+      if [ -L "$BIN_DIR/$c" ]; then ok "$c"; else warn "$c no enlazado"; fi
+    done
+    printf '\n%sSkills%s\n' "$C_BOLD" "$C_OFF"
+    for d in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+      n=0
+      if [ -d "$d" ]; then
+        for l in "$d"/*; do
+          if [ -L "$l" ] && [[ "$(readlink "$l")" == "$ARP_HOME"* ]]; then n=$((n+1)); fi
+        done
+      fi
+      if [ "$n" -gt 0 ]; then ok "$n en $d"; else warn "ninguna en $d"; fi
+    done
+    printf '\n%sPuente de cuota%s\n' "$C_BOLD" "$C_OFF"
+    if [ -x "$ARP_HOME/bin/arp-hooks" ]; then "$ARP_HOME/bin/arp-hooks" status; fi
+    ;;
+
+  update)
+    [ -d "$ARP_HOME" ] || { err "no instalado"; exit 1; }
+    if [ ! -d "$ARP_HOME/.git" ]; then
+      err "$ARP_HOME no es un repo git — nada que actualizar"
+      exit 1
+    fi
+    if [ -n "$(git -C "$ARP_HOME" status --porcelain)" ]; then
+      warn "tienes cambios sin commitear en $ARP_HOME"
+      warn "haz commit o stash antes de actualizar"
+      exit 1
+    fi
+    printf '%sActualizando%s %s%s%s\n' "$C_BOLD" "$C_OFF" "$C_DIM" "$ARP_HOME" "$C_OFF"
+    before="$(git -C "$ARP_HOME" rev-parse HEAD)"
+    git -C "$ARP_HOME" pull --ff-only
+    after="$(git -C "$ARP_HOME" rev-parse HEAD)"
+    if [ "$before" = "$after" ]; then
+      ok "ya estabas al día"
+    else
+      ok "actualizado: $(git -C "$ARP_HOME" log --oneline "$before..$after" | wc -l) commit(s)"
+      # Reinstala para recoger skills nuevas o renombradas.
+      "$ARP_HOME/install.sh" --all --yes
+    fi
+    printf '\n%sLos proyectos ya adoptados recogen el protocolo nuevo%s\n' "$C_DIM" "$C_OFF"
+    printf '%sla próxima vez que corras agent-init en cada uno.%s\n' "$C_DIM" "$C_OFF"
+    ;;
+
+  uninstall)
+    printf '%sSe quitará:%s\n' "$C_BOLD" "$C_OFF"
+    printf '  enlaces en %s y en las carpetas de skills\n' "$BIN_DIR"
+    printf '  hooks de ARP en ~/.claude/settings.json\n'
+    printf '\n%sNO se toca:%s el repo (%s),\n' "$C_DIM" "$C_OFF" "$ARP_HOME"
+    printf '%sni los AGENTS.md ni los docs/ai/ de tus proyectos.%s\n' "$C_DIM" "$C_OFF"
+    if [ -t 0 ] && [ -r /dev/tty ]; then
+      printf '\n¿Continuar? [y/N] '
+      read -r a < /dev/tty || a=""
+      case "$a" in [yYsS]) ;; *) printf 'Cancelado.\n'; exit 0 ;; esac
+    fi
+    "$ARP_HOME/install.sh" --uninstall
+    printf '\n%sEl repo sigue en %s — para reinstalar: ./install.sh%s\n' \
+      "$C_DIM" "$ARP_HOME" "$C_OFF"
+    ;;
+
+  -h|--help) sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) err "Acción desconocida: $1"; sed -n '7,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+#
+# arp-hooks — conecta el puente de cuota con Claude Code.
+#
+# Escribe en ~/.claude/settings.json:
+#   statusLine                    -> persiste rate_limits en ~/.claude/arp/quota.json
+#   UserPromptSubmit              -> avisa al agente cuando pasas el umbral
+#   StopFailure (matcher rate_limit) -> marca la tarea como HANDOFF al agotarse la cuota
+#
+# Respeta lo que ya tengas: añade, nunca reemplaza. Hace copia de seguridad
+# antes de tocar nada y es idempotente.
+#
+# Uso:
+#   arp-hooks install [--threshold 80]
+#   arp-hooks uninstall
+#   arp-hooks status
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SETTINGS="$HOME/.claude/settings.json"
+ACTION="${1:-status}" ; THRESHOLD=80
+shift || true
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --threshold) THRESHOLD="${2:-80}"; shift 2 ;;
+    *) printf 'Opción desconocida: %s\n' "$1" >&2; exit 1 ;;
+  esac
+done
+
+command -v jq >/dev/null 2>&1 || { printf '✗ jq es necesario para el puente de cuota\n' >&2; exit 1; }
+
+REPO_DIR="$REPO_DIR" SETTINGS="$SETTINGS" ACTION="$ACTION" THRESHOLD="$THRESHOLD" \
+python3 <<'PY'
+import json, os, shutil, sys
+from datetime import datetime
+
+repo   = os.environ["REPO_DIR"]
+path   = os.environ["SETTINGS"]
+action = os.environ["ACTION"]
+thr    = os.environ["THRESHOLD"]
+
+STATUSLINE = f"{repo}/statusline/arp-statusline.sh"
+NOTICE     = f"{repo}/hooks/arp-quota-notice.sh"
+RATELIMIT  = f"{repo}/hooks/arp-rate-limit.sh"
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except FileNotFoundError:
+    cfg = {}
+except json.JSONDecodeError as e:
+    sys.exit(f"✗ {path} no es JSON válido ({e}). No se tocó nada.")
+
+def entries(event):
+    return cfg.setdefault("hooks", {}).setdefault(event, [])
+
+def has_cmd(event, cmd):
+    return any(h.get("command") == cmd
+               for grp in entries(event) for h in grp.get("hooks", []))
+
+def drop_ours(event):
+    kept = []
+    for grp in entries(event):
+        grp["hooks"] = [h for h in grp.get("hooks", [])
+                        if not str(h.get("command", "")).startswith(repo)]
+        if grp["hooks"]:
+            kept.append(grp)
+    cfg["hooks"][event] = kept
+
+def wrap(cmd, matcher=None):
+    grp = {"hooks": [{"type": "command", "command": cmd}]}
+    if matcher:
+        grp = {"matcher": matcher, **grp}
+    return grp
+
+if action == "status":
+    sl = cfg.get("statusLine", {}).get("command", "")
+    print(f"  statusLine      : {'ARP' if sl.startswith(repo) else (sl or '(sin configurar)')}")
+    for ev, cmd in (("UserPromptSubmit", NOTICE), ("StopFailure", RATELIMIT)):
+        print(f"  {ev:<16}: {'instalado' if has_cmd(ev, cmd) else 'no instalado'}"
+              f"  (otros: {sum(len(g.get('hooks', [])) for g in entries(ev)) - (1 if has_cmd(ev, cmd) else 0)})")
+    print(f"  umbral          : {os.environ.get('ARP_QUOTA_THRESHOLD', thr)}%")
+    sys.exit(0)
+
+# Copia de seguridad antes de cualquier escritura.
+if os.path.exists(path):
+    bak = f"{path}.arp-bak-{datetime.now():%Y%m%d%H%M%S}"
+    shutil.copy2(path, bak)
+    print(f"  copia de seguridad: {bak}")
+
+if action == "install":
+    prev = cfg.get("statusLine", {}).get("command", "")
+    if prev and not prev.startswith(repo):
+        print(f"  ! ya tienes un statusLine propio:\n      {prev}")
+        print( "    ARP NO lo reemplaza. Para tener la cuota, agrega a tu script:")
+        print(f"      {STATUSLINE}   # o copia su bloque de persistencia")
+    else:
+        cfg["statusLine"] = {"type": "command", "command": STATUSLINE}
+        print("  ✓ statusLine")
+
+    for ev, cmd, matcher in (("UserPromptSubmit", NOTICE, None),
+                             ("StopFailure",      RATELIMIT, "rate_limit")):
+        others = sum(len(g.get("hooks", [])) for g in entries(ev))
+        if has_cmd(ev, cmd):
+            print(f"  = {ev} (ya estaba)")
+        else:
+            entries(ev).append(wrap(cmd, matcher))
+            extra = f", junto a {others} hook(s) tuyo(s)" if others else ""
+            print(f"  ✓ {ev}{extra}")
+
+    env = cfg.setdefault("env", {})
+    env["ARP_QUOTA_THRESHOLD"] = str(thr)
+    print(f"  ✓ umbral {thr}%")
+
+elif action == "uninstall":
+    if cfg.get("statusLine", {}).get("command", "").startswith(repo):
+        del cfg["statusLine"]; print("  ✓ statusLine quitado")
+    for ev in ("UserPromptSubmit", "StopFailure"):
+        drop_ours(ev)
+        if not cfg["hooks"][ev]:
+            del cfg["hooks"][ev]
+    cfg.get("env", {}).pop("ARP_QUOTA_THRESHOLD", None)
+    if cfg.get("env") == {}:
+        del cfg["env"]
+    print("  ✓ hooks de ARP quitados (los tuyos siguen intactos)")
+else:
+    sys.exit(f"Acción desconocida: {action}")
+
+tmp = path + ".arp-tmp"
+with open(tmp, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+os.replace(tmp, path)
+print(f"  → {path}")
+PY

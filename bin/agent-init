@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+#
+# agent-init — adopta el Agent Relay Protocol en el proyecto actual.
+#
+# Reparto de responsabilidades:
+#   este script  → lo determinista (carpetas, bloques con marcadores, detección
+#                  de stack). Idempotente: correrlo N veces da el mismo resultado.
+#   el agente    → lo que requiere criterio (entrevista, consolidar reglas
+#                  divergentes, redactar las secciones 1-7).
+#
+# Uso:
+#   agent-init                    analiza/adopta el proyecto con Claude Code
+#   agent-init --agent codex      lo mismo con Codex CLI
+#   agent-init --no-agent         solo la parte determinista, sin lanzar IA
+#   agent-init --dry-run          muestra qué haría, sin escribir nada
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TPL="$REPO_DIR/templates"
+INJECT="$REPO_DIR/lib/inject.awk"
+
+AGENT="claude" ; DRY=0 ; NO_AGENT=0
+
+C_DIM=$'\033[2m'; C_OK=$'\033[32m'; C_WARN=$'\033[33m'
+C_ERR=$'\033[31m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+
+ok()   { printf '%s✓%s %s\n' "$C_OK"   "$C_OFF" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_WARN" "$C_OFF" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_ERR"  "$C_OFF" "$*" >&2; }
+step() { printf '\n%s%s%s\n' "$C_BOLD" "$*" "$C_OFF"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent|-a) AGENT="${2:-}"; shift 2 ;;
+    --agent=*)  AGENT="${1#*=}"; shift ;;
+    --no-agent) NO_AGENT=1; shift ;;
+    --dry-run)  DRY=1; NO_AGENT=1; shift ;;
+    -h|--help)  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)          err "Opción desconocida: $1"; exit 1 ;;
+  esac
+done
+
+case "$AGENT" in
+  claude|codex) ;;
+  *) err "Agente no soportado: $AGENT (usa claude o codex)"; exit 1 ;;
+esac
+
+# --- utilidades --------------------------------------------------------------
+
+# inject_block <archivo> <bloque>  — crea el archivo si no existe.
+inject_block() {
+  local file="$1" block="$2"
+  if [ "$DRY" -eq 1 ]; then
+    if [ -f "$file" ] && grep -q 'ARP:BEGIN' "$file"; then
+      printf '  %s(dry) actualizaría el bloque en %s%s\n' "$C_DIM" "$file" "$C_OFF"
+    else
+      printf '  %s(dry) inyectaría el bloque en %s%s\n' "$C_DIM" "$file" "$C_OFF"
+    fi
+    return 0
+  fi
+  [ -f "$file" ] || : > "$file"
+  awk -v BLOCK="$block" -f "$INJECT" "$file" > "$file.arp-tmp"
+  mv "$file.arp-tmp" "$file"
+  return 0
+}
+
+stack_field() { # stack_field <archivo-stack> <campo>
+  sed -n "s/^$2: //p" "$1" | head -1
+}
+
+# --- 0. contexto -------------------------------------------------------------
+PROJECT_DIR="$(pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+printf '%sAgent Relay Protocol%s %s· %s%s\n' \
+  "$C_BOLD" "$C_OFF" "$C_DIM" "$PROJECT_NAME" "$C_OFF"
+if [ "$DRY" -eq 1 ]; then printf '%s(dry-run: no se escribe nada)%s\n' "$C_DIM" "$C_OFF"; fi
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  warn "esto no es un repo git — el relevo usa 'git diff' y 'git log'"
+  warn "inicializa con: git init"
+fi
+
+# --- 1. detección de stack ---------------------------------------------------
+step "Stack"
+STACK_FILE="" ; STACK_NAME="desconocido"
+# El orden importa: pnpm antes que npm, uv antes que poetry.
+for cand in python-uv python-poetry node-pnpm node-npm go rust; do
+  f="$TPL/stacks/$cand.md"
+  [ -f "$f" ] || continue
+  marker="$(stack_field "$f" detect)"
+  if [ -n "$marker" ] && [ -e "$PROJECT_DIR/$marker" ]; then
+    STACK_FILE="$f"; STACK_NAME="$(stack_field "$f" name)"
+    ok "$STACK_NAME ${C_DIM}(por $marker)${C_OFF}"
+    break
+  fi
+done
+
+RUNNER=""
+for r in Makefile justfile Justfile; do
+  if [ -f "$PROJECT_DIR/$r" ]; then RUNNER="$r"; ok "runner: $r"; break; fi
+done
+
+if [ -z "$STACK_FILE" ]; then
+  warn "no se reconoció el stack — el agente preguntará por los comandos"
+fi
+
+# --- 2. estructura -----------------------------------------------------------
+step "Estructura"
+if [ "$DRY" -eq 1 ]; then
+  printf '  %s(dry) crearía docs/ai/tasks/%s\n' "$C_DIM" "$C_OFF"
+else
+  mkdir -p "$PROJECT_DIR/docs/ai/tasks"
+  ok "docs/ai/tasks/"
+  if [ ! -f "$PROJECT_DIR/docs/ai/tasks/_TEMPLATE.md" ]; then
+    cp "$TPL/task.md" "$PROJECT_DIR/docs/ai/tasks/_TEMPLATE.md"
+    ok "plantilla de task file"
+  fi
+fi
+
+inject_block "$PROJECT_DIR/.gitignore" "$TPL/gitignore-block.txt"
+if [ "$DRY" -eq 0 ]; then ok ".gitignore"; fi
+
+# --- 3. AGENTS.md ------------------------------------------------------------
+step "Fuente de verdad"
+HAS_AGENTS=0 ; HAS_CLAUDE=0 ; CLAUDE_HAS_CONTENT=0
+if [ -f "$PROJECT_DIR/AGENTS.md" ]; then HAS_AGENTS=1; fi
+if [ -f "$PROJECT_DIR/CLAUDE.md" ]; then HAS_CLAUDE=1; fi
+
+# ¿CLAUDE.md tiene algo más que el @AGENTS.md?
+if [ "$HAS_CLAUDE" -eq 1 ]; then
+  if grep -qvE '^[[:space:]]*(@AGENTS\.md[[:space:]]*)?$' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+    CLAUDE_HAS_CONTENT=1
+  fi
+fi
+
+if [ "$HAS_AGENTS" -eq 0 ] && [ "$DRY" -eq 0 ]; then
+  sed -e "s|{{PROJECT_NAME}}|$PROJECT_NAME|" -e '/{{ARP_BLOCK}}/d' \
+    "$TPL/AGENTS.md" > "$PROJECT_DIR/AGENTS.md"
+  ok "AGENTS.md creado desde la plantilla ${C_DIM}(con placeholders)${C_OFF}"
+elif [ "$HAS_AGENTS" -eq 1 ]; then
+  ok "AGENTS.md ya existe ${C_DIM}(se conserva)${C_OFF}"
+fi
+
+# El bloque del protocolo siempre se refresca: es lo que hace que un
+# `git pull` en agent-core propague la versión nueva a todos los proyectos.
+inject_block "$PROJECT_DIR/AGENTS.md" "$TPL/arp-block.md"
+if [ "$DRY" -eq 0 ]; then ok "bloque ARP actualizado"; fi
+
+if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
+  warn "CLAUDE.md tiene contenido propio — el agente lo consolidará en AGENTS.md"
+fi
+
+# --- 4. resumen / prompt -----------------------------------------------------
+if [ "$NO_AGENT" -eq 1 ]; then
+  printf '\n%sListo (parte determinista).%s\n' "$C_OK" "$C_OFF"
+  if [ "$DRY" -eq 0 ]; then
+    printf '%sRevisa AGENTS.md y completa los {{placeholders}}.%s\n' "$C_DIM" "$C_OFF"
+  fi
+  exit 0
+fi
+
+STACK_HINT="No se reconoció el stack. Pregunta al usuario por los comandos de la sección 3."
+if [ -n "$STACK_FILE" ]; then
+  STACK_HINT="Stack detectado: $STACK_NAME
+- Gestor de paquetes: $(stack_field "$STACK_FILE" package_manager)  <- NO preguntes esto, el lockfile ya lo confirma
+- Lenguaje: $(stack_field "$STACK_FILE" language)
+Comandos sugeridos (verifícalos contra el proyecto antes de escribirlos):
+- install:  $(stack_field "$STACK_FILE" install)
+- dev:      $(stack_field "$STACK_FILE" dev)
+- check:    $(stack_field "$STACK_FILE" check)
+- test_one: $(stack_field "$STACK_FILE" test_one)"
+fi
+if [ -n "$RUNNER" ]; then
+  STACK_HINT="$STACK_HINT
+Hay un $RUNNER en la raíz: léelo y usa sus targets en vez de los comandos crudos."
+fi
+
+CLAUDE_HINT=""
+if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
+  CLAUDE_HINT="
+CLAUDE.md tiene contenido propio. Migralo a AGENTS.md sin perder información:
+funde cada regla en la sección que le corresponda y, SOLO cuando AGENTS.md ya
+las contenga, reemplaza CLAUDE.md por una sola línea: @AGENTS.md
+Si alguna regla contradice lo que ya hay en AGENTS.md, pregunta al usuario cuál gana."
+elif [ "$HAS_CLAUDE" -eq 0 ]; then
+  CLAUDE_HINT="
+No existe CLAUDE.md. Créalo con una sola línea: @AGENTS.md"
+fi
+
+read -r -d '' PROMPT <<EOF || true
+Eres un arquitecto de software auditando la configuración agéntica de este proyecto.
+
+CONTEXTO YA RESUELTO POR EL SCRIPT (no lo rehagas):
+- docs/ai/tasks/ existe.
+- .gitignore tiene el bloque de ARP.
+- AGENTS.md existe y su sección 8 (entre ARP:BEGIN y ARP:END) ya está puesta.
+  NO toques esa sección: la gestiona agent-init y se sobrescribe en cada ejecución.
+
+$STACK_HINT
+$CLAUDE_HINT
+
+TU TAREA: completar las secciones 1 a 7 de AGENTS.md.
+
+REGLAS:
+1. NUNCA preguntes lo que puedes leer del repo. Inspecciona archivos, lockfiles,
+   package.json, Makefile y el árbol de directorios antes de abrir la boca.
+   El gestor de paquetes, los comandos y la estructura se deducen, no se preguntan.
+2. Pregunta SOLO los huecos que ningún archivo revela — típicamente las secciones
+   5 (convenciones), 6 (reglas de negocio) y 7 (no tocar).
+3. Una pregunta a la vez. Breve y concreta. Nada de listas gigantes.
+4. Si el proyecto está vacío, haz la entrevista completa de arquitectura:
+   idea y problema -> propone 2-3 stacks con su porqué -> módulos del MVP ->
+   reglas de negocio. Guarda el resultado en AGENTS.md.
+5. La sección 3 debe quedar con un comando de verificación REAL y ejecutable.
+   Si el proyecto no tiene uno, propón el mínimo viable para su stack
+   (formato + lint + tipos + tests) y confírmalo con el usuario.
+6. AGENTS.md se lee en cada turno: mantenlo por debajo de ~150 líneas.
+   Si un linter puede imponer una regla, no la escribas.
+7. No dejes ningún {{placeholder}} sin resolver.
+
+Al terminar, muestra un resumen de una línea por sección.
+EOF
+
+step "Lanzando $AGENT"
+if ! command -v "$AGENT" >/dev/null 2>&1; then
+  err "'$AGENT' no está instalado."
+  printf '%sLa parte determinista sí quedó lista.%s\n' "$C_DIM" "$C_OFF"
+  exit 1
+fi
+exec "$AGENT" "$PROMPT"
