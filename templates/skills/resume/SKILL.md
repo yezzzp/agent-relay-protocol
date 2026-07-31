@@ -39,6 +39,11 @@ updated: <fecha ISO-8601>
 
 Desde la **primera casilla `[ ]`**, no desde el principio.
 
+Si el task file dice que lo generó ARP automáticamente, no tiene casillas ni decisiones:
+es el plan aprobado más el estado del árbol, promovido por un hook al cortarse la cuota.
+Ahí el paso 2 no es opcional — contrasta el plan contra `git log` y `git diff` para
+deducir hasta dónde llegó el predecesor, y convierte el plan en checklist al retomarlo.
+
 - No rehagas trabajo ya marcado `[x]` y confirmado por el árbol.
 - **No re-litigues las decisiones registradas.** Si una te parece equivocada, dilo al
   usuario en una línea y sigue con ella hasta que él decida lo contrario.

@@ -218,8 +218,8 @@ if [ "${STATES[0]}" -eq 1 ]; then
   else
     DO_HOOKS=$ASSUME_YES
     if [ "$DO_HOOKS" -eq 0 ] && [ -t 0 ] && [ -r /dev/tty ]; then
-      say "  ${C_DIM}Escribe en ~/.claude/settings.json: statusLine, UserPromptSubmit"
-      say "  y StopFailure. Añade sin reemplazar y hace copia de seguridad.${C_OFF}"
+      say "  ${C_DIM}Escribe en ~/.claude/settings.json: statusLine, UserPromptSubmit,"
+      say "  PostToolUse y StopFailure. Añade sin reemplazar y hace copia de seguridad.${C_OFF}"
       printf '  ¿Instalarlo? [Y/n] '
       read -r ans < /dev/tty || ans=""
       if [[ ! "$ans" =~ ^[nN]$ ]]; then DO_HOOKS=1; fi

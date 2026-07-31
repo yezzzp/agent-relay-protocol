@@ -177,6 +177,26 @@ statusline ──escribe──▶ ~/.claude/arp/quota.json ──lee──▶ ho
 Y si el corte llega igual, un hook `StopFailure` con matcher `rate_limit` marca la tarea
 activa del proyecto como `HANDOFF`, para que el otro agente la encuentre con `resume`.
 
+### El plan no se pierde
+
+Queda un hueco: el modo plan nativo vive solo en la conversación. El plan es el argumento
+de una llamada a herramienta y **nunca toca el disco**, así que un corte se lo lleva
+entero y el hook de cuota no encuentra ninguna tarea que marcar.
+
+Lo cierra un hook `PostToolUse` con matcher `ExitPlanMode`: al aprobar un plan, guarda una
+copia en `.arp/current-plan.md`. Cuesta cero tokens — es un hook, no entra en contexto — y
+se integra con el modo plan nativo en vez de competir con él.
+
+Es un **borrador desechable**, no un task file. De ahí salen tres caminos:
+
+| Qué pasa | Qué ocurre con el borrador |
+|---|---|
+| Terminas la tarea | lo sobrescribe el próximo plan; `docs/ai/tasks/` sigue vacío |
+| Corres `/relay` | la skill lo lee y escribe el task file real, añadiendo decisiones y alternativas descartadas |
+| Se corta la cuota | `arp-rate-limit.sh` lo promueve a `docs/ai/tasks/<slug>.md` con `status: HANDOFF` |
+
+Así el principio queda intacto: **el task file solo aparece cuando hay relevo de verdad**.
+
 ```bash
 arp-hooks install --threshold 80   # avisar al 80% de la ventana de 5h
 arp-hooks status
@@ -241,6 +261,7 @@ agent-relay-protocol/
 │   └── arp-hooks           conecta el puente de cuota
 ├── hooks/
 │   ├── arp-quota-notice.sh UserPromptSubmit — avisa antes del corte
+│   ├── arp-plan-capture.sh PostToolUse — guarda el plan aprobado en .arp/
 │   └── arp-rate-limit.sh   StopFailure — marca HANDOFF tras el corte
 ├── statusline/
 │   └── arp-statusline.sh   dibuja la barra y persiste la cuota

@@ -17,6 +17,11 @@ lo indica.
 
 Si la tarea se completa en una sola sesión, **no se escribe ningún archivo**.
 
+`.arp/current-plan.md` es otra cosa: un borrador desechable que un hook escribe solo al
+aprobar un plan en modo plan. No es un task file, no se commitea y no se edita a mano.
+Lo lee `relay` para no partir de cero, y lo promueve el hook de cuota si el corte llega
+antes. Que exista no significa que haya una tarea en curso.
+
 Frontmatter obligatorio:
 
 ```yaml

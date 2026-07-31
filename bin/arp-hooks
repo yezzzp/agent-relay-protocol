@@ -3,9 +3,10 @@
 # arp-hooks — conecta el puente de cuota con Claude Code.
 #
 # Escribe en ~/.claude/settings.json:
-#   statusLine                    -> persiste rate_limits en ~/.claude/arp/quota.json
-#   UserPromptSubmit              -> avisa al agente cuando pasas el umbral
-#   StopFailure (matcher rate_limit) -> marca la tarea como HANDOFF al agotarse la cuota
+#   statusLine                        -> persiste rate_limits en ~/.claude/arp/quota.json
+#   UserPromptSubmit                  -> avisa al agente cuando pasas el umbral
+#   PostToolUse (matcher ExitPlanMode) -> guarda el plan aprobado en .arp/current-plan.md
+#   StopFailure (matcher rate_limit)  -> marca la tarea como HANDOFF al agotarse la cuota
 #
 # Respeta lo que ya tengas: añade, nunca reemplaza. Hace copia de seguridad
 # antes de tocar nada y es idempotente.
@@ -43,6 +44,14 @@ thr    = os.environ["THRESHOLD"]
 STATUSLINE = f"{repo}/statusline/arp-statusline.sh"
 NOTICE     = f"{repo}/hooks/arp-quota-notice.sh"
 RATELIMIT  = f"{repo}/hooks/arp-rate-limit.sh"
+PLANCAP    = f"{repo}/hooks/arp-plan-capture.sh"
+
+# (evento, script, matcher) — el orden es el de instalación y el del status.
+HOOKS = (
+    ("UserPromptSubmit", NOTICE,    None),
+    ("PostToolUse",      PLANCAP,   "ExitPlanMode"),
+    ("StopFailure",      RATELIMIT, "rate_limit"),
+)
 
 os.makedirs(os.path.dirname(path), exist_ok=True)
 try:
@@ -78,7 +87,7 @@ def wrap(cmd, matcher=None):
 if action == "status":
     sl = cfg.get("statusLine", {}).get("command", "")
     print(f"  statusLine      : {'ARP' if sl.startswith(repo) else (sl or '(sin configurar)')}")
-    for ev, cmd in (("UserPromptSubmit", NOTICE), ("StopFailure", RATELIMIT)):
+    for ev, cmd, _ in HOOKS:
         print(f"  {ev:<16}: {'instalado' if has_cmd(ev, cmd) else 'no instalado'}"
               f"  (otros: {sum(len(g.get('hooks', [])) for g in entries(ev)) - (1 if has_cmd(ev, cmd) else 0)})")
     print(f"  umbral          : {os.environ.get('ARP_QUOTA_THRESHOLD', thr)}%")
@@ -100,8 +109,7 @@ if action == "install":
         cfg["statusLine"] = {"type": "command", "command": STATUSLINE}
         print("  ✓ statusLine")
 
-    for ev, cmd, matcher in (("UserPromptSubmit", NOTICE, None),
-                             ("StopFailure",      RATELIMIT, "rate_limit")):
+    for ev, cmd, matcher in HOOKS:
         others = sum(len(g.get("hooks", [])) for g in entries(ev))
         if has_cmd(ev, cmd):
             print(f"  = {ev} (ya estaba)")
@@ -117,7 +125,7 @@ if action == "install":
 elif action == "uninstall":
     if cfg.get("statusLine", {}).get("command", "").startswith(repo):
         del cfg["statusLine"]; print("  ✓ statusLine quitado")
-    for ev in ("UserPromptSubmit", "StopFailure"):
+    for ev, _, _ in HOOKS:
         drop_ours(ev)
         if not cfg["hooks"][ev]:
             del cfg["hooks"][ev]

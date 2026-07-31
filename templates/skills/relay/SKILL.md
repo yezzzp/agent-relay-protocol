@@ -10,10 +10,20 @@ No sigas trabajando en la tarea después de invocar esto.
 
 ## 1. Identifica la tarea
 
-Slug en kebab-case, derivado de la rama actual o del objetivo (`auth-refactor`, `fix-pdf-export`).
+Si existe `.arp/current-plan.md`, **léelo primero**: es el plan que aprobaste en modo
+plan, guardado en disco por un hook. Su frontmatter ya trae el `slug` — úsalo tal cual.
+
+Si no existe, el slug va en kebab-case, derivado de la rama actual o del objetivo
+(`auth-refactor`, `fix-pdf-export`).
+
 El archivo va en `docs/ai/tasks/<slug>.md`. Si ya existe, actualízalo en vez de crear otro.
 
 ## 2. Escribe el archivo
+
+El borrador es materia prima, no producto: no lo copies tal cual. Aporta lo que **solo
+tú sabes** y él no puede contener — lo que ya ejecutaste, las decisiones que tomaste
+sobre la marcha, las alternativas que descartaste y por qué, dónde te desviaste del plan.
+Eso es lo que hace útil al task file.
 
 Usa la plantilla de `docs/ai/tasks/` si existe. Frontmatter:
 
@@ -37,6 +47,10 @@ Contenido obligatorio:
 - **Estado de la verificación** — resultado real del comando de verificación de la
   sección 3 de AGENTS.md. Ejecútalo antes de escribirlo; no lo asumas.
 - **Riesgos / no romper.**
+
+Cuando el task file esté escrito, borra `.arp/current-plan.md`. Ya cumplió: el task file
+lo reemplaza. Si lo dejas, un corte por cuota posterior lo promovería como si fuera otra
+tarea y tendrías dos archivos para lo mismo.
 
 ## 3. No escribas lo que git ya dice
 
