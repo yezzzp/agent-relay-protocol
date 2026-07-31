@@ -266,6 +266,7 @@ agent-relay-protocol/
 ├── statusline/
 │   └── arp-statusline.sh   dibuja la barra y persiste la cuota
 ├── lib/inject.awk          inyección idempotente entre marcadores
+├── tests/run.sh            suite de los hooks — `tests/run.sh`, sin dependencias
 └── templates/
     ├── AGENTS.md           plantilla canónica de 8 secciones
     ├── arp-block.md        la sección 8, regenerada en cada agent-init
