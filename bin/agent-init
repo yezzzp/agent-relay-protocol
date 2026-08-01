@@ -313,6 +313,15 @@ $GRAPHIFY_HINT
 
 TU TAREA: completar las secciones 1 a 7 de AGENTS.md.
 
+ANTES DE NADA, lee AGENTS.md entero. Si las secciones 1 a 7 ya están escritas, sin
+ningún {{placeholder}}, y describen el proyecto tal como es hoy: dilo en UNA línea y
+TERMINA sin preguntar nada ni editar nada.
+
+Re-ejecutar agent-init sobre un proyecto ya adoptado debe ser una no-operación. No
+propongas mejoras que nadie pidió, no reordenes, no "pulas" la redacción. Solo actúa
+si falta algo o si el repo cambió y el documento quedó desfasado — y en ese caso toca
+únicamente lo desfasado.
+
 REGLAS:
 1. NUNCA preguntes lo que puedes leer del repo. Inspecciona archivos, lockfiles,
    package.json, Makefile y el árbol de directorios antes de abrir la boca.
