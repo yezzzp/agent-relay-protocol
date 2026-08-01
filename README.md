@@ -99,6 +99,11 @@ dependencias del proyecto. Son tres comandos suyos, no nuestros:
 | `graphify hook install` | hook `post-commit` que lo mantiene al día en segundo plano |
 | `graphify <agente> install` | empuja al agente a consultar el grafo antes de leer archivos crudos |
 
+El hook es de **git**, no de un agente: vive en `.git/hooks/post-commit` y dispara con
+cualquier commit, venga de Claude, de Codex o de tu terminal. La integración sí es por
+agente, y se instala para **los que marcaste en `install.sh`** — la elección queda en
+`~/.claude/arp/targets`. Tener `codex` en el `PATH` no significa quererlo en ARP.
+
 El agente recibe el aviso de que el grafo existe, y de que la sección `## graphify`
 la gestiona la herramienta y no debe tocarla.
 

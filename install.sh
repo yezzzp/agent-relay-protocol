@@ -70,6 +70,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
       fi
     done
   done
+  rm -f "$HOME/.claude/arp/targets"
   say "Listo."
   exit 0
 fi
@@ -207,6 +208,14 @@ for i in "${!TARGET_KEYS[@]}"; do
     ln -sfn "${src%/}" "$link"; n=$((n + 1))
   done
   ok "${TARGET_LABEL[$i]}: $n skills → ${TARGET_DIR[$i]}"
+done
+
+# Persiste la elección para que agent-init no la vuelva a preguntar ni la deduzca
+# del PATH: tener codex instalado no significa quererlo en ARP.
+mkdir -p "$HOME/.claude/arp"
+: > "$HOME/.claude/arp/targets"
+for i in "${!TARGET_KEYS[@]}"; do
+  [ "${STATES[$i]}" -eq 1 ] && printf '%s\n' "${TARGET_KEYS[$i]}" >> "$HOME/.claude/arp/targets"
 done
 
 # --- puente de cuota (solo Claude Code) --------------------------------------

@@ -180,14 +180,33 @@ if command -v graphify >/dev/null 2>&1; then
         else
           warn "el hook post-commit falló — instálalo con: graphify hook install"
         fi
-        # Integración por plataforma: empuja al agente a consultar el grafo
-        # antes de leer archivos crudos. En codex escribe en AGENTS.md; en
-        # claude, en CLAUDE.md más un hook PreToolUse.
-        if (cd "$PROJECT_DIR" && graphify "$AGENT" install >/dev/null 2>&1); then
-          ok "integración con $AGENT"
+        # Integración por plataforma: empuja al agente a consultar el grafo antes
+        # de leer archivos crudos. En codex escribe en AGENTS.md; en claude, en
+        # CLAUDE.md más un hook PreToolUse.
+        #
+        # Se instala para las plataformas que elegiste en install.sh, no para la
+        # del flag --agent: ese flag dice quién conduce ESTA entrevista, no con
+        # qué agentes trabajas. Sin el archivo (instalación antigua), se cae a
+        # lo que haya en el PATH.
+        TARGETS_FILE="$HOME/.claude/arp/targets"
+        if [ -s "$TARGETS_FILE" ]; then
+          GFY_TARGETS="$(tr -d ' \t' < "$TARGETS_FILE" | grep -E '^(claude|codex)$' || true)"
         else
-          warn "la integración falló — instálala con: graphify $AGENT install"
+          GFY_TARGETS=""
+          for a in claude codex; do
+            command -v "$a" >/dev/null 2>&1 && GFY_TARGETS="$GFY_TARGETS$a"$'\n'
+          done
         fi
+        [ -n "$GFY_TARGETS" ] || GFY_TARGETS="$AGENT"
+
+        while IFS= read -r plat; do
+          [ -n "$plat" ] || continue
+          if (cd "$PROJECT_DIR" && graphify "$plat" install >/dev/null 2>&1); then
+            ok "integración con $plat"
+          else
+            warn "la integración con $plat falló — instálala con: graphify $plat install"
+          fi
+        done <<< "$GFY_TARGETS"
       else
         warn "graphify update falló — inténtalo a mano: graphify update ."
       fi
