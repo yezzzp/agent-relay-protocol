@@ -90,6 +90,18 @@ El trabajo se reparte en dos:
   y redacta las secciones 1 a 7 de `AGENTS.md`. Tiene prohibido preguntar lo que puede
   leer del repo.
 
+Si tienes Graphify instalado, `agent-init` te ofrece además construir el grafo de
+dependencias del proyecto. Son tres comandos suyos, no nuestros:
+
+| | Qué deja |
+|---|---|
+| `graphify update .` | el grafo AST — tree-sitter local, sin LLM ni API keys, no gasta cuota |
+| `graphify hook install` | hook `post-commit` que lo mantiene al día en segundo plano |
+| `graphify <agente> install` | empuja al agente a consultar el grafo antes de leer archivos crudos |
+
+El agente recibe el aviso de que el grafo existe, y de que la sección `## graphify`
+la gestiona la herramienta y no debe tocarla.
+
 ```bash
 agent-init --agent codex   # usar Codex CLI en vez de Claude Code
 agent-init --no-agent      # solo la parte determinista

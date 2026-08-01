@@ -152,6 +152,51 @@ if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
   warn "CLAUDE.md tiene contenido propio — el agente lo consolidará en AGENTS.md"
 fi
 
+# --- 3.5 graphify (opcional) -------------------------------------------------
+# Solo si ya está instalado: agent-init no instala herramientas, eso es de install.sh.
+GRAPHIFY_DONE=0
+if command -v graphify >/dev/null 2>&1; then
+  step "Graphify ${C_DIM}(opcional — mapa de dependencias)${C_OFF}"
+  if [ -f "$PROJECT_DIR/graphify-out/graph.json" ]; then
+    ok "el grafo ya existe ${C_DIM}(refréscalo con: graphify update .)${C_OFF}"
+    GRAPHIFY_DONE=1
+  elif [ "$DRY" -eq 1 ]; then
+    printf '  %s(dry) ofrecería construir el grafo AST%s\n' "$C_DIM" "$C_OFF"
+  elif [ ! -t 0 ] || [ ! -r /dev/tty ]; then
+    printf '  %somitido (sin terminal). Luego: graphify update . && graphify hook install%s\n' "$C_DIM" "$C_OFF"
+  else
+    printf '  %sConstruye el grafo de dependencias del proyecto con tree-sitter.\n' "$C_DIM"
+    printf '  Sin LLM y sin API keys: no gasta cuota. Deja graphify-out/, que\n'
+    printf '  el bloque de .gitignore ya ignora.%s\n' "$C_OFF"
+    printf '  ¿Construirlo ahora? [Y/n] '
+    read -r ans < /dev/tty || ans=""
+    if [[ ! "$ans" =~ ^[nN]$ ]]; then
+      if (cd "$PROJECT_DIR" && graphify update . >/dev/null 2>&1); then
+        ok "grafo construido ${C_DIM}($(graphify god-nodes --top 1 --graph "$PROJECT_DIR/graphify-out/graph.json" 2>/dev/null | head -1))${C_OFF}"
+        GRAPHIFY_DONE=1
+        # Hook de git: re-extrae solo lo que cambió en cada commit. Sin daemon.
+        if (cd "$PROJECT_DIR" && graphify hook install >/dev/null 2>&1); then
+          ok "hook post-commit ${C_DIM}(el grafo se mantiene solo)${C_OFF}"
+        else
+          warn "el hook post-commit falló — instálalo con: graphify hook install"
+        fi
+        # Integración por plataforma: empuja al agente a consultar el grafo
+        # antes de leer archivos crudos. En codex escribe en AGENTS.md; en
+        # claude, en CLAUDE.md más un hook PreToolUse.
+        if (cd "$PROJECT_DIR" && graphify "$AGENT" install >/dev/null 2>&1); then
+          ok "integración con $AGENT"
+        else
+          warn "la integración falló — instálala con: graphify $AGENT install"
+        fi
+      else
+        warn "graphify update falló — inténtalo a mano: graphify update ."
+      fi
+    else
+      printf '  %somitido — puedes hacerlo luego con: graphify update .%s\n' "$C_DIM" "$C_OFF"
+    fi
+  fi
+fi
+
 # --- 4. resumen / prompt -----------------------------------------------------
 if [ "$NO_AGENT" -eq 1 ]; then
   printf '\n%sListo (parte determinista).%s\n' "$C_OK" "$C_OFF"
@@ -177,6 +222,14 @@ if [ -n "$RUNNER" ]; then
 Hay un $RUNNER en la raíz: léelo y usa sus targets en vez de los comandos crudos."
 fi
 
+# graphify pudo crear o tocar CLAUDE.md DESPUÉS de la comprobación de la sección 3,
+# así que aquí se vuelve a mirar: si no, el agente recibiría "no existe CLAUDE.md,
+# créalo con una sola línea" y borraría la sección recién escrita.
+CLAUDE_HAS_GRAPHIFY=0
+if [ -f "$PROJECT_DIR/CLAUDE.md" ] && grep -q '^## graphify' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+  CLAUDE_HAS_GRAPHIFY=1 ; HAS_CLAUDE=1
+fi
+
 CLAUDE_HINT=""
 if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
   CLAUDE_HINT="
@@ -187,6 +240,23 @@ Si alguna regla contradice lo que ya hay en AGENTS.md, pregunta al usuario cuál
 elif [ "$HAS_CLAUDE" -eq 0 ]; then
   CLAUDE_HINT="
 No existe CLAUDE.md. Créalo con una sola línea: @AGENTS.md"
+fi
+
+if [ "$CLAUDE_HAS_GRAPHIFY" -eq 1 ]; then
+  CLAUDE_HINT="$CLAUDE_HINT
+CLAUDE.md ya contiene una sección '## graphify' que escribió la propia herramienta.
+Pon @AGENTS.md como PRIMERA línea del archivo y deja esa sección intacta debajo.
+No la migres a AGENTS.md, no la reescribas y no la borres: se regenera sola."
+fi
+
+GRAPHIFY_HINT=""
+if [ "$GRAPHIFY_DONE" -eq 1 ]; then
+  GRAPHIFY_HINT="
+Este proyecto tiene un grafo de dependencias en graphify-out/. Úsalo para deducir la
+estructura de la sección 4 en vez de recorrer directorios a mano:
+  graphify god-nodes             los hubs del repo
+  graphify affected \"<simbolo>\"   qué depende de algo
+Si graphify escribió una sección '## graphify' en AGENTS.md, no la toques."
 fi
 
 read -r -d '' PROMPT <<EOF || true
@@ -200,6 +270,7 @@ CONTEXTO YA RESUELTO POR EL SCRIPT (no lo rehagas):
 
 $STACK_HINT
 $CLAUDE_HINT
+$GRAPHIFY_HINT
 
 TU TAREA: completar las secciones 1 a 7 de AGENTS.md.
 
