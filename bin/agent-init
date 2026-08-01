@@ -326,10 +326,19 @@ REGLAS:
 1. NUNCA preguntes lo que puedes leer del repo. Inspecciona archivos, lockfiles,
    package.json, Makefile y el árbol de directorios antes de abrir la boca.
    El gestor de paquetes, los comandos y la estructura se deducen, no se preguntan.
+   Eso incluye la DOCUMENTACIÓN que ya exista: README, docs/, *.md sueltos. Léela
+   entera antes de preguntar nada. Lo que esos documentos ya decidan —stack,
+   arquitectura, reglas de negocio, alcance— está CERRADO: lo resumes en AGENTS.md,
+   no lo vuelves a proponer ni a someter a debate. Si dos documentos se contradicen,
+   manda el que se declare rector; si ninguno lo hace, pregunta cuál gana (una sola
+   pregunta) y anota la respuesta.
 2. Pregunta SOLO los huecos que ningún archivo revela — típicamente las secciones
    5 (convenciones), 6 (reglas de negocio) y 7 (no tocar).
 3. Una pregunta a la vez. Breve y concreta. Nada de listas gigantes.
-4. Si el proyecto está vacío, haz la entrevista completa de arquitectura:
+4. Vacío significa sin código Y SIN DOCUMENTACIÓN DE DISEÑO. Un repo con specs
+   pero sin una línea de código NO está vacío: ahí el trabajo es destilar esos
+   documentos a AGENTS.md, no entrevistar.
+   Solo si de verdad está vacío haz la entrevista completa de arquitectura:
    idea y problema -> propone 2-3 stacks con su porqué -> módulos del MVP ->
    reglas de negocio. Guarda el resultado en AGENTS.md.
 5. La sección 3 debe quedar con un comando de verificación REAL y ejecutable.
