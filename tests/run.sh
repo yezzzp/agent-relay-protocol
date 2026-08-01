@@ -64,22 +64,33 @@ front()   { sed -n "/^$2: /{s/^$2: //p;q;}" "$1"; }   # clave del frontmatter
 
 group "arp-plan-capture.sh"
 
-p="$(newproj cap-rama feat/Auth-Refactor)"
-capture "$p" '# Plan: lo que sea
+# El título manda sobre la rama: una rama de etapa aloja muchas tareas y todas
+# acabarían con el mismo slug. Además se le quita el prefijo "Plan:".
+p="$(newproj cap-titulo fase-1-modelo-multitenant)"
+capture "$p" '# Plan: Logo de la marca en el login
 
 paso uno'
-eq "slug de la rama, normalizado" "$(front "$p/.arp/current-plan.md" slug)" "feat-auth-refactor"
+eq "el título manda sobre la rama" "$(front "$p/.arp/current-plan.md" slug)" "logo-de-la-marca-en-el-login"
 has "guarda el plan íntegro" "$(cat "$p/.arp/current-plan.md")" "paso uno"
+
+p="$(newproj cap-planificacion)"
+capture "$p" '# Planificación del cierre contable'
+eq "no mutila un título que empieza por «Plan»" \
+   "$(front "$p/.arp/current-plan.md" slug)" "planificacion-del-cierre-contable"
+
+p="$(newproj cap-rama feat/Auth-Refactor)"
+capture "$p" 'un plan sin ningún encabezado'
+eq "sin título: cae a la rama, normalizada" "$(front "$p/.arp/current-plan.md" slug)" "feat-auth-refactor"
 
 p="$(newproj cap-sin-arp)"; rm -rf "$p/docs"
 capture "$p" '# Plan: no debería guardarse'
 [ -e "$p/.arp" ] && ko "proyecto sin ARP: no crea .arp/" "creó .arp/" || ok "proyecto sin ARP: no crea .arp/"
 
-p="$(newproj cap-tronco)"   # rama main -> el slug sale del título
+p="$(newproj cap-acentos)"
 capture "$p" '# Plan: Arreglar la exportación de PDF'
-eq "rama tronco: slug del título, sin acentos" "$(front "$p/.arp/current-plan.md" slug)" "plan-arreglar-la-exportacion-de-pdf"
+eq "transcribe los acentos" "$(front "$p/.arp/current-plan.md" slug)" "arreglar-la-exportacion-de-pdf"
 
-p="$(newproj cap-sin-titulo)"
+p="$(newproj cap-sin-titulo)"   # sin título y en rama tronco: no queda de dónde sacarlo
 capture "$p" 'texto suelto, sin ningún encabezado'
 eq "sin título ni rama útil: slug de rescate" "$(front "$p/.arp/current-plan.md" slug)" "plan"
 
@@ -145,7 +156,7 @@ capture "$p" '# Plan: Export de PDF
 ## Pasos
 1. uno'
 cut_ "$p"
-t="$p/docs/ai/tasks/fix-pdf-export.md"
+t="$p/docs/ai/tasks/export-de-pdf.md"   # del título, no de la rama fix/pdf-export
 [ -f "$t" ] && ok "promueve el borrador al slug correcto" || ko "promueve el borrador al slug correcto" "no existe $t"
 eq  "promovido con status HANDOFF" "$(front "$t" status)" "HANDOFF"
 eq  "conserva la rama"             "$(front "$t" branch)" "fix/pdf-export"
@@ -159,7 +170,7 @@ eq "dos cortes seguidos: un solo task file" "$(ls "$p/docs/ai/tasks" | wc -l)" "
 
 # Colisión: nunca pisar un task file existente.
 p="$(newproj rl-colision feat/choque)"
-touch "$p/docs/ai/tasks/feat-choque.md"
+touch "$p/docs/ai/tasks/choque.md"   # mismo slug que va a generar el plan
 capture "$p" '# Plan: choque'
 cut_ "$p"
 eq "colisión de nombre: no pisa, sufija" "$(ls "$p/docs/ai/tasks" | wc -l)" "2"

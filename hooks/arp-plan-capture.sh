@@ -53,9 +53,11 @@ SESSION="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)"
 BRANCH="$(git -C "$CWD" branch --show-current 2>/dev/null)"
 NOW="$(date -Is)"
 
-# Slug: la rama manda, salvo que sea una rama tronco. Si no, el primer título
-# del plan. Se calcula aquí una vez para que arp-rate-limit.sh no tenga que
-# adivinarlo en mitad de un corte.
+# Slug: manda el título del plan, y la rama queda de respaldo. El título describe
+# la TAREA; la rama describe la línea de trabajo, y en una rama de etapa
+# (`fase-1-modelo-multitenant`) caben muchas tareas que colisionarían entre sí.
+# Se calcula aquí una vez para que arp-rate-limit.sh no tenga que adivinarlo en
+# mitad de un corte.
 slugify() {
   local out
   if out="$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null)"; then
@@ -71,15 +73,17 @@ norm() {
     | cut -c1-50
 }
 
-SLUG=""
-case "$BRANCH" in
-  ''|main|master|develop|dev|trunk|HEAD) ;;
-  *) SLUG="$(norm "$BRANCH")" ;;
-esac
+TITLE="$(printf '%s\n' "$PLAN" | grep -m1 -E '^#+[[:space:]]+' | sed -E 's/^#+[[:space:]]+//')"
+# "# Plan: exportar PDF" -> "exportar PDF". Se exige los dos puntos para no
+# mutilar un título que empiece por "Planificación".
+TITLE="$(printf '%s' "$TITLE" | sed -E 's/^[[:space:]]*[Pp][Ll][Aa][Nn][[:space:]]*:[[:space:]]*//')"
+SLUG="$(norm "$TITLE")"
 
 if [ -z "$SLUG" ]; then
-  TITLE="$(printf '%s\n' "$PLAN" | grep -m1 -E '^#+[[:space:]]+' | sed -E 's/^#+[[:space:]]+//')"
-  SLUG="$(norm "${TITLE:-plan}")"
+  case "$BRANCH" in
+    ''|main|master|develop|dev|trunk|HEAD) ;;
+    *) SLUG="$(norm "$BRANCH")" ;;
+  esac
 fi
 [ -n "$SLUG" ] || SLUG="plan"
 
