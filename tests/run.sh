@@ -49,7 +49,14 @@ newproj() {
   printf '%s' "$d"
 }
 
-capture() { jq -n --arg c "$1" --arg p "$2" '{cwd:$c, session_id:"s1", tool_input:{plan:$p}}' | "$CAPTURE"; }
+# Forma real del payload, verificada contra uno capturado en vivo: el plan viaja
+# en tool_response.plan y tool_input llega VACÍO. Si se prueba con tool_input se
+# aprueba un hook que no funciona — ya pasó una vez.
+capture() {
+  jq -n --arg c "$1" --arg p "$2" \
+    '{cwd:$c, session_id:"s1", hook_event_name:"PostToolUse", tool_name:"ExitPlanMode",
+      tool_input:{}, tool_response:{plan:$p, isAgent:false, filePath:"/tmp/x.md"}}' | "$CAPTURE"
+}
 cut_()    { jq -n --arg c "$1" '{cwd:$c, hook_event_name:"StopFailure"}' | "$RATELIMIT"; }
 front()   { sed -n "/^$2: /{s/^$2: //p;q;}" "$1"; }   # clave del frontmatter
 
@@ -81,10 +88,22 @@ echo 'esto no es json' | "$CAPTURE"; rc=$?
 eq "JSON inválido: sale 0" "$rc" "0"
 
 p="$(newproj cap-vacio)"
-jq -n --arg c "$p" '{cwd:$c, tool_input:{}}' | "$CAPTURE"; rc=$?
+jq -n --arg c "$p" '{cwd:$c, tool_input:{}, tool_response:{}}' | "$CAPTURE"; rc=$?
 eq "plan vacío: sale 0" "$rc" "0"
 [ -e "$p/.arp/current-plan.md" ] && ko "plan vacío: no escribe borrador" "lo escribió" \
                                  || ok "plan vacío: no escribe borrador"
+
+# Alternativa por si otra versión de Claude Code devuelve el plan en tool_input.
+p="$(newproj cap-alterna)"
+jq -n --arg c "$p" '{cwd:$c, tool_input:{plan:"# Plan: por la vía alterna"}}' | "$CAPTURE"
+has "acepta el plan en tool_input si tool_response no lo trae" \
+    "$(cat "$p/.arp/current-plan.md" 2>&1)" "por la vía alterna"
+
+# Un subagente en modo plan no debe pisar el plan del agente principal.
+p="$(newproj cap-subagente)"
+capture "$p" '# Plan: el bueno, del agente principal'
+jq -n --arg c "$p" '{cwd:$c, tool_response:{plan:"# Plan: de un subagente", isAgent:true}}' | "$CAPTURE"
+has "un subagente no pisa el borrador" "$(cat "$p/.arp/current-plan.md")" "del agente principal"
 
 # --- corte por cuota ----------------------------------------------------------
 

@@ -32,8 +32,22 @@ CWD="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)"
 # ensuciar el árbol con un directorio que su .gitignore no conoce.
 [ -d "$CWD/docs/ai/tasks" ] || exit 0
 
-PLAN="$(printf '%s' "$payload" | jq -r '.tool_input.plan // empty' 2>/dev/null)"
-[ -n "$PLAN" ] || { printf '%s plan aprobado sin contenido en %s\n' "$(date -Is)" "$CWD" >> "$LOG"; exit 0; }
+# Un subagente que sale de modo plan trae su propio plan parcial. Capturarlo
+# pisaría el del agente principal, que es el que representa la tarea.
+[ "$(printf '%s' "$payload" | jq -r '.tool_response.isAgent // false' 2>/dev/null)" = "true" ] && exit 0
+
+# El plan llega en tool_response.plan — verificado contra el payload real, no
+# contra la documentación: ahí tool_input viene vacío. Se deja tool_input.plan
+# como alternativa por si otra versión lo mueve de sitio.
+PLAN="$(printf '%s' "$payload" | jq -r '.tool_response.plan // .tool_input.plan // empty' 2>/dev/null)"
+if [ -z "$PLAN" ]; then
+  # No damos por perdido el plan sin dejar rastro: el payload crudo queda a mano
+  # para ver qué forma trae de verdad.
+  printf '%s' "$payload" > "$HOME/.claude/arp/last-unparsed-payload.json" 2>/dev/null
+  printf '%s plan aprobado sin contenido en %s (payload en ~/.claude/arp/last-unparsed-payload.json)\n' \
+         "$(date -Is)" "$CWD" >> "$LOG"
+  exit 0
+fi
 
 SESSION="$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)"
 BRANCH="$(git -C "$CWD" branch --show-current 2>/dev/null)"

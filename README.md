@@ -177,15 +177,19 @@ statusline ──escribe──▶ ~/.claude/arp/quota.json ──lee──▶ ho
 Y si el corte llega igual, un hook `StopFailure` con matcher `rate_limit` marca la tarea
 activa del proyecto como `HANDOFF`, para que el otro agente la encuentre con `resume`.
 
-### El plan no se pierde
+### El plan, anclado al proyecto
 
-Queda un hueco: el modo plan nativo vive solo en la conversación. El plan es el argumento
-de una llamada a herramienta y **nunca toca el disco**, así que un corte se lo lleva
-entero y el hook de cuota no encuentra ninguna tarea que marcar.
+Claude Code guarda los planes que apruebas en `~/.claude/plans/`, con un nombre derivado
+de tu prompt. Eso los salva del olvido, pero no sirve para relevar: es un cajón global
+donde no se distingue de qué repo es cada plan, Codex no sabe que existe, y nada lo
+convierte en tarea cuando se corta la cuota.
 
-Lo cierra un hook `PostToolUse` con matcher `ExitPlanMode`: al aprobar un plan, guarda una
-copia en `.arp/current-plan.md`. Cuesta cero tokens — es un hook, no entra en contexto — y
-se integra con el modo plan nativo en vez de competir con él.
+Un hook `PostToolUse` con matcher `ExitPlanMode` lo ancla al proyecto: al aprobar un plan
+guarda una copia en `.arp/current-plan.md`, con la rama y un slug ya calculado. Cuesta
+cero tokens — es un hook, no entra en contexto — y se integra con el modo plan nativo en
+vez de competir con él.
+
+El plan viaja en `tool_response.plan` del payload; `tool_input` llega vacío.
 
 Es un **borrador desechable**, no un task file. De ahí salen tres caminos:
 
