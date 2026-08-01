@@ -214,6 +214,26 @@ if command -v graphify >/dev/null 2>&1; then
       printf '  %somitido — puedes hacerlo luego con: graphify update .%s\n' "$C_DIM" "$C_OFF"
     fi
   fi
+
+  # graphify escribe la MISMA sección en CLAUDE.md (claude install) y en AGENTS.md
+  # (codex install). Como CLAUDE.md importa AGENTS.md, Claude la leería dos veces
+  # en cada turno. Se quita la de CLAUDE.md y se conserva la de AGENTS.md, que ven
+  # los dos agentes. El hook PreToolUse —lo que de verdad hace cumplir la regla—
+  # vive en .claude/settings.json y no se toca.
+  #
+  # Va fuera de la rama de construcción a propósito: así también repara un
+  # proyecto que ya quedó duplicado. Idempotente.
+  if [ "$DRY" -eq 0 ] \
+     && grep -q '^## graphify' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null \
+     && grep -q '^## graphify' "$PROJECT_DIR/AGENTS.md" 2>/dev/null; then
+    awk '
+      /^## graphify[[:space:]]*$/ { skip=1; next }
+      skip && /^## /              { skip=0 }
+      !skip                       { print }
+    ' "$PROJECT_DIR/CLAUDE.md" > "$PROJECT_DIR/CLAUDE.md.arp-tmp" \
+      && mv "$PROJECT_DIR/CLAUDE.md.arp-tmp" "$PROJECT_DIR/CLAUDE.md"
+    ok "sección graphify duplicada quitada de CLAUDE.md ${C_DIM}(queda en AGENTS.md)${C_OFF}"
+  fi
 fi
 
 # --- 4. resumen / prompt -----------------------------------------------------
