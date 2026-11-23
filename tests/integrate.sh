@@ -185,6 +185,39 @@ feature "$rb" feat-i i.txt "i"
 ( cd "$rb" && "$ARP" integrate feat-i ) >/dev/null 2>&1
 [ ! -f "$WORK/after.log" ] && ok "after steps never run when the integration fails" || ko "after steps never run when the integration fails" "ran"
 
+group "queue: branches that wait go in together"
+rq="$(newrepo queue "echo run >> $WORK/runs.log; sleep 2")"
+feature "$rq" q-a qa.txt "a"; feature "$rq" q-b qb.txt "b"; feature "$rq" q-c qc.txt "c"
+( cd "$rq-wt/q-a" && "$ARP" integrate q-a > "$WORK/q-a.out" 2>&1; echo $? > "$WORK/q-a.rc" ) &
+sleep 0.8
+( cd "$rq-wt/q-b" && "$ARP" integrate q-b > "$WORK/q-b.out" 2>&1; echo $? > "$WORK/q-b.rc" ) &
+( cd "$rq-wt/q-c" && "$ARP" integrate q-c > "$WORK/q-c.out" 2>&1; echo $? > "$WORK/q-c.rc" ) &
+wait
+eq "the first branch lands" "$(cat "$WORK/q-a.rc")" "0"
+eq "a waiting branch lands" "$(cat "$WORK/q-b.rc")" "0"
+eq "the other waiting branch lands" "$(cat "$WORK/q-c.rc")" "0"
+eq "the two that waited were verified in one run" "$(wc -l < "$WORK/runs.log" | tr -d ' ')" "2"
+for f in qa qb qc; do git -C "$rq" cat-file -e "develop:$f.txt" 2>/dev/null || ko "develop has $f.txt" "missing"; done
+has "a waiting session is told it was queued" "$(cat "$WORK/q-b.out")" "queued"
+has "and gets its own result" "$(cat "$WORK/q-b.out")" "q-b: landed"
+ls "$rq"/.arp/integration/*q-c.md >/dev/null 2>&1 && ok "each branch of a batch gets its report" || ko "each branch of a batch gets its report" "none for q-c"
+has "the report says what it was verified with" "$(cat "$rq"/.arp/integration/*q-c.md)" "Verified together with: q-b"
+
+group "queue: a failing batch is split"
+rs="$(newrepo split "echo run >> $WORK/runs2.log; sleep 2; test ! -f bad.txt")"
+feature "$rs" s-a sa.txt "a"; feature "$rs" s-b sb.txt "b"; feature "$rs" s-c bad.txt "boom"
+( cd "$rs-wt/s-a" && "$ARP" integrate s-a > /dev/null 2>&1; echo $? > "$WORK/s-a.rc" ) &
+sleep 0.8
+( cd "$rs-wt/s-b" && "$ARP" integrate s-b > "$WORK/s-b.out" 2>&1; echo $? > "$WORK/s-b.rc" ) &
+( cd "$rs-wt/s-c" && "$ARP" integrate s-c > "$WORK/s-c.out" 2>&1; echo $? > "$WORK/s-c.rc" ) &
+wait
+eq "the good branch of a failed batch still lands" "$(cat "$WORK/s-b.rc")" "0"
+eq "the guilty branch is refused" "$(cat "$WORK/s-c.rc")" "1"
+git -C "$rs" cat-file -e develop:sb.txt 2>/dev/null && ok "develop has the good branch" || ko "develop has the good branch" "missing"
+git -C "$rs" cat-file -e develop:bad.txt 2>/dev/null && ko "develop never gets the guilty branch" "it did" || ok "develop never gets the guilty branch"
+eq "runs: first, the batch, then each alone" "$(wc -l < "$WORK/runs2.log" | tr -d ' ')" "4"
+has "the guilty one is told to fix it" "$(cat "$WORK/s-c.out")" "must fix"
+
 group "test databases never collide"
 r3="$(newrepo dbs true)"
 printf '[env]\ndb_prefix = "t_"\nweb_port = 39011\napi_port = 39012\n' >> /dev/null

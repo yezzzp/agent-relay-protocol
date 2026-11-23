@@ -72,7 +72,7 @@ Project knowledge (domain rules, brand, screens) goes in the project's `.claude/
    - **Big:** it opens `docs/ai/tasks/<slug>.md` with your words verbatim (S1, S2…), the tasks and the decisions.
 2. **Work.** In its own worktree. Subagents take the jobs that need no conversation with you.
 3. **Verify.** `verify.quick` must pass. UI changes also pass `ui-check`.
-4. **Integrate.** `arp integrate <branch>`. If it fails, nothing is merged and the report says what to fix.
+4. **Integrate.** `arp integrate <branch>`. Branches that arrive while one runs wait and go in together, in one run of the checks; a failing batch is split so only the guilty branch is refused. If it fails, nothing is merged and the report says what to fix.
 5. **Release.** `arp release vN.x.y` runs the full suite and tags `main`. Only when you decide.
 
 ## Sessions or subagents

@@ -53,6 +53,7 @@ class Report:
         self.outcome = "refused"
         self.fix = ""
         self.when = datetime.now()
+        self.batch: list[str] = []
 
     def step(self, name, ok, secs, output=""):
         self.steps.append((name, ok, secs))
@@ -70,6 +71,8 @@ class Report:
             f"- Result: {self.outcome}",
             f"- Branch: {self.branch}",
             f"- Commit: {self.sha or 'n/a'}",
+            *([f"- Verified together with: {', '.join(b for b in self.batch if b != self.branch)}"]
+              if len(self.batch) > 1 else []),
             "",
             "## Steps",
         ]
@@ -137,6 +140,150 @@ def undo(wt: Path, sha: str):
     gitwt.git(wt, "reset", "--hard", sha)
 
 
+def _slug(branch: str) -> str:
+    return branch.replace("/", "-")
+
+
+def _queue_dir(main: Path) -> Path:
+    return main / ".arp" / "integration" / "queue"
+
+
+def _result_path(main: Path, branch: str) -> Path:
+    return main / ".arp" / "integration" / "results" / f"{_slug(branch)}.json"
+
+
+def _queued(main: Path) -> list[str]:
+    folder = _queue_dir(main)
+    entries = sorted(folder.glob("*"), key=lambda f: f.stat().st_mtime) if folder.is_dir() else []
+    return [f.read_text().strip() for f in entries if f.read_text().strip()]
+
+
+def _enqueue(main: Path, branch: str) -> None:
+    folder = _queue_dir(main)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / _slug(branch)).write_text(branch + "\n")
+
+
+def _dequeue(main: Path, branch: str) -> None:
+    (_queue_dir(main) / _slug(branch)).unlink(missing_ok=True)
+
+
+def _set_result(main: Path, branch: str, outcome: str, code: int, report: Path | None) -> None:
+    import json
+
+    path = _result_path(main, branch)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"outcome": outcome, "code": code, "report": str(report or "")}))
+    _dequeue(main, branch)
+
+
+def _settings(cfg: dict, main: Path) -> tuple[str, Path, list]:
+    integ = cfg["branches"]["integration"]
+    wt = Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ))
+    db = cfg["env"]["db_rebuild"]
+    plan = [
+        ("db_rebuild", db.replace("{name}", gitwt.test_db(cfg, wt)) if db else "", None),
+        ("verify.full", cfg["verify"]["full"], "unit"),
+        ("verify.e2e", cfg["verify"]["e2e"], "e2e"),
+    ]
+    return integ, wt, plan
+
+
+def _batch(project, main: Path, branches: list[str], keep_servers: bool) -> None:
+    """Merge every branch, verify once, land all. On a failure with more than one branch, each
+    is tried alone, so the good ones land and only the guilty one is refused."""
+    cfg = project.config
+    integ, wt_path, plan = _settings(cfg, main)
+    title = " + ".join(branches)
+    report = Report(main, title, "Integration")
+    wt, err = ensure_worktree(main, wt_path, integ)
+    if err:
+        report.fix = f"Integration worktree problem: {err}"
+        path = report.write()
+        for b in branches:
+            _set_result(main, b, "refused", 1, path)
+        return
+    pre = gitwt.git(wt, "rev-parse", "HEAD").stdout.strip()
+    sources = {w["branch"]: w for w in gitwt.worktrees(main)}
+    merged: list[str] = []
+    for b in branches:
+        if gitwt.git(main, "merge-base", "--is-ancestor", b, integ).returncode == 0:
+            _set_result(main, b, "nothing to integrate", 0, None)
+            continue
+        merge = gitwt.git(wt, "merge", "--no-ff", "--no-edit", b)
+        if merge.returncode == 0:
+            merged.append(b)
+            continue
+        files = conflict_files(wt)
+        gitwt.git(wt, "merge", "--abort")
+        if merged:  # it may only clash with a branch of this batch: next round, against the new tip
+            _enqueue(main, b)
+            continue
+        one = Report(main, b, "Integration")
+        one.step("merge", False, 0, merge.stdout + merge.stderr)
+        one.fix = (f"Session on {b} must merge {integ} into its branch and resolve conflicts in: "
+                   + (", ".join(files) or "see output"))
+        _set_result(main, b, "refused", 1, one.write())
+    if not merged:
+        return
+    report = Report(main, " + ".join(merged), "Integration")
+    report.step("merge" + (f" ({len(merged)} branches)" if len(merged) > 1 else ""), True, 0)
+    if not run_steps(report, project, wt, plan, bool(cfg["tests"]["record"])):
+        undo(wt, pre)
+        if len(merged) > 1:
+            report.fix = "The batch failed; each branch is tried alone next."
+            report.write()
+            for b in merged:
+                _batch(project, main, [b], keep_servers)
+            return
+        failed = report.steps[-1][0]
+        report.fix = (f"Session on {merged[0]} must fix '{failed}' (output above), then ask again. "
+                      f"{integ} was left unchanged.")
+        report.sha = gitwt.git(main, "rev-parse", "--short=12", merged[0]).stdout.strip()
+        _set_result(main, merged[0], "refused", 1, report.write())
+        return
+    report.outcome = "landed"
+    report.sha = gitwt.git(wt, "rev-parse", "--short=12", "HEAD").stdout.strip()
+    for command in cfg.get("integrate", {}).get("after", []) or []:
+        rc, out, secs = gitwt.sh(command, wt)
+        report.step(f"after: {command}", rc == 0, secs, "" if rc == 0 else out)
+    import time as _time
+
+    for b in merged:
+        source = sources.get(b)
+        if source:
+            state = source["path"] / ".arp" / "session-state"
+            state.parent.mkdir(exist_ok=True)
+            state.write_text(f"integrated\n{int(_time.time())}\n")
+            if not keep_servers and (n := gitwt.stop_servers(source["path"])):
+                report.step(f"stopped {n} dev server process(es) of {b}", True, 0)
+    report.batch = merged
+    for b in merged:  # one report per branch, so each session finds its own
+        report.branch = b
+        _set_result(main, b, "landed", 0, report.write())
+
+
+def _drain(project, main: Path, keep_servers: bool) -> None:
+    while waiting := _queued(main):
+        _batch(project, main, waiting, keep_servers)
+
+
+def _print_result(main: Path, branch: str) -> int:
+    import json
+
+    data = json.loads(_result_path(main, branch).read_text())
+    print(f"integration {branch}: {data['outcome']}")
+    if data["report"]:
+        text = Path(data["report"]).read_text()
+        for line in text.splitlines():
+            if line.startswith("- pass ") or line.startswith("- FAIL "):
+                print("  " + line[2:])
+        if "## Who must fix what" in text:
+            print(text.split("## Who must fix what", 1)[1].strip())
+        print(f"report: {data['report']}")
+    return int(data["code"])
+
+
 def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
     project = config.load_project(".")
     main = config.main_root(".")
@@ -145,7 +292,6 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
         return 1
     cfg = project.config
     integ = cfg["branches"]["integration"]
-    report = Report(main, branch, "Integration")
     if gitwt.git(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode != 0:
         print(f"no such branch: {branch}", file=sys.stderr)
         return 1
@@ -159,77 +305,54 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
     if gitwt.git(main, "merge-base", "--is-ancestor", branch, integ).returncode == 0:
         print(f"nothing to integrate: every commit of {branch} is already in {integ}")
         return 0
+    source = next((w for w in gitwt.worktrees(main) if w["branch"] == branch), None)
+    if source and (dirty := gitwt.dirty_files(source["path"])):
+        report = Report(main, branch, "Integration")
+        report.fix = (f"Session on {branch} must commit or stash {len(dirty)} uncommitted file(s) "
+                      f"in {source['path']}, then ask again.")
+        return finish(report, 1)
+    if dry_run:
+        return _dry_run(cfg, main, branch)
+
+    _result_path(main, branch).unlink(missing_ok=True)
+    _enqueue(main, branch)
+    told = False
+    import time as _time
+
+    while not _result_path(main, branch).exists():
+        with lock(main) as got:
+            if got:
+                _drain(project, main, keep_servers)
+                continue
+        if not told:
+            print(f"queued: another integration is running; {branch} goes in the next batch")
+            told = True
+        _time.sleep(1)
+    return _print_result(main, branch)
+
+
+def _dry_run(cfg: dict, main: Path, branch: str) -> int:
+    integ, wt_path, plan = _settings(cfg, main)
     with lock(main) as got:
         if not got:
-            print("another integration is running; try again when it finishes", file=sys.stderr)
+            print("another integration is running; try the dry run when it finishes", file=sys.stderr)
             return 1
-        source = next((w for w in gitwt.worktrees(main) if w["branch"] == branch), None)
-        if source and (dirty := gitwt.dirty_files(source["path"])):
-            report.fix = (
-                f"Session on {branch} must commit or stash {len(dirty)} uncommitted file(s) "
-                f"in {source['path']}, then ask again."
-            )
-            return finish(report, 1)
-        wt = Path(
-            cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ)
-        )
-        wt, err = ensure_worktree(main, wt, integ)
+        wt, err = ensure_worktree(main, wt_path, integ)
         if err:
-            report.fix = f"Integration worktree problem: {err}"
-            return finish(report, 1)
+            print(f"Integration worktree problem: {err}", file=sys.stderr)
+            return 1
         pre = gitwt.git(wt, "rev-parse", "HEAD").stdout.strip()
-        report.sha = gitwt.git(main, "rev-parse", branch).stdout.strip()[:12]
-        merge = gitwt.git(wt, "merge", "--no-ff", "--no-commit" if dry_run else "--no-edit", branch)
+        merge = gitwt.git(wt, "merge", "--no-ff", "--no-commit", branch)
+        files = conflict_files(wt) if merge.returncode != 0 else []
+        gitwt.git(wt, "merge", "--abort")
+        undo(wt, pre)
         if merge.returncode != 0:
-            files = conflict_files(wt)
-            gitwt.git(wt, "merge", "--abort")
-            undo(wt, pre)
-            report.step("merge", False, 0, merge.stdout + merge.stderr)
-            report.fix = (
-                f"Session on {branch} must merge {integ} into its branch and resolve conflicts in: "
-                + (", ".join(files) or "see output")
-            )
-            return finish(report, 1)
-        db = cfg["env"]["db_rebuild"]
-        name = gitwt.test_db(cfg, Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ)))
-        plan = [
-            ("db_rebuild", db.replace("{name}", name) if db else "", None),
-            ("verify.full", cfg["verify"]["full"], "unit"),
-            ("verify.e2e", cfg["verify"]["e2e"], "e2e"),
-        ]
-        if dry_run:
-            gitwt.git(wt, "merge", "--abort")
-            undo(wt, pre)
-            print(f"dry run: {branch} merges cleanly into {integ}. Steps that would run:")
-            for n, c, _ in plan:
-                print(f"  {n}: {c or '(skipped, empty)'}")
-            return 0
-        report.step("merge", True, 0)
-        record = bool(cfg["tests"]["record"])
-        if not run_steps(report, project, wt, plan, record):
-            undo(wt, pre)
-            failed = report.steps[-1][0]
-            report.fix = (
-                f"Session on {branch} must fix '{failed}' (output above), then ask again. "
-                f"{integ} was left unchanged."
-            )
-            return finish(report, 1)
-        report.outcome = "landed"
-        if source:
-            import time as _time
-
-            state = source["path"] / ".arp" / "session-state"
-            state.parent.mkdir(exist_ok=True)
-            state.write_text(f"integrated\n{int(_time.time())}\n")
-        report.sha = gitwt.git(wt, "rev-parse", "--short=12", "HEAD").stdout.strip()
-        for command in cfg.get("integrate", {}).get("after", []) or []:
-            rc, out, secs = gitwt.sh(command, wt)
-            report.step(f"after: {command}", rc == 0, secs, "" if rc == 0 else out)
-        if source and not keep_servers:
-            n = gitwt.stop_servers(source["path"])
-            if n:
-                report.step(f"stopped {n} dev server process(es)", True, 0)
-        return finish(report, 0)
+            print(f"dry run: {branch} conflicts with {integ} in: " + (", ".join(files) or "see git output"))
+            return 1
+        print(f"dry run: {branch} merges cleanly into {integ}. Steps that would run:")
+        for n, c, _ in plan:
+            print(f"  {n}: {c or '(skipped, empty)'}")
+        return 0
 
 
 def release(tag: str) -> int:

@@ -64,7 +64,7 @@ Before any UI work, load the `style` skill (base), then the project's brand laye
 
 <!-- piece:integrator -->
 ## Integration
-- `arp integrate <branch>`. Never merge by hand. If it fails, fix it in your branch and run it again.
+- `arp integrate <branch>`, in the background. Never merge by hand. If another integration is running it queues and goes in with the next batch. If it fails, fix it in your branch and run it again.
 - Production moves only when the owner says so: `arp release vN.x.y`.
 <!-- /piece -->
 

@@ -22,7 +22,10 @@ cd "$(git rev-parse --show-toplevel)-wt/<area>-<task>"
 
 ## Finish
 1. The quick verify command passes, and the worktree is clean (everything committed).
-2. `arp integrate <task>`. It locks, merges in the integration worktree, rebuilds the database, runs the full suite and the critical e2e tests, and writes `.arp/integration/<date>-<task>.md`.
+2. `arp integrate <task>`. It merges in the integration worktree, rebuilds the database, runs the full suite and the critical e2e tests, and writes `.arp/integration/<date>-<task>.md`. Run it in the background: it can take minutes.
+   - **Queue.** If another integration is running, your branch waits in `.arp/integration/queue/` and the command waits with it. When the running one ends, everything waiting goes in as **one batch**: one merge of all, one run of the checks. Nobody waits for a session that has not finished.
+   - **A failing batch is split.** Each branch is then tried alone: the good ones land, and only the guilty one gets the failure. A branch that clashes only with another branch of its batch waits for the next round.
+   - The report says which branches were verified together.
 3. If it fails, nothing was merged. Read the report, fix it in your branch, and run it again.
 4. When it lands, `arp sessions set ready`. The dev server of that worktree is stopped.
 5. `integrate.after` in the config runs once the branch lands, in the integration worktree: a push, a migration of the shared dev database, a server restart. If one fails the report says so and the merge stays; fix it by hand.
