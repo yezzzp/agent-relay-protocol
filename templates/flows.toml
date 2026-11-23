@@ -1,0 +1,8 @@
+# The main user flows of the project (5 to 20), one sentence each.
+# Each end-to-end test names one with `@flow <id>`. Tracked in git.
+#
+# [checkout]
+# says     = "A customer fills a cart, pays and gets a receipt."
+# critical = true
+
+{{FLOWS}}

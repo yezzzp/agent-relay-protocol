@@ -1,0 +1,7 @@
+# ARP:BEGIN
+# Agent Relay Protocol — block managed by agent-init
+graphify-out/
+.arp/*
+!.arp/config.toml
+!.arp/flows.toml
+# ARP:END

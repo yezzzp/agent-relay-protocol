@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+:root {
+  --bg: #fbfbfd; --fg: #1d1d1f; --fg2: #6e6e73; --line: #e5e5ea; --panel: #f5f5f7;
+  --error: #d70015; --warning: #b25000; --ok: #248a3d; --accent: #0071e3;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #000; --fg: #f5f5f7; --fg2: #98989d; --line: #2c2c2e; --panel: #1c1c1e;
+    --error: #ff453a; --warning: #ff9f0a; --ok: #32d74b; --accent: #2997ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+main { max-width: 760px; margin: 0 auto; padding: 56px 16px 96px; }
+h1 { font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
+h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin: 48px 0 12px; }
+h3 { font-size: 15px; font-weight: 600; margin: 24px 0 8px; }
+p { margin: 0 0 8px; }
+.muted, .meta { color: var(--fg2); font-size: 14px; }
+code { font-family: var(--mono); font-size: 13px; background: var(--panel); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+section { border-top: 1px solid var(--line); }
+.view { margin: 16px 0 28px; }
+.view > .name { font-weight: 500; }
+.view ul { list-style: none; padding: 0; margin: 8px 0 0; }
+.view li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 15px; overflow-wrap: anywhere; }
+.view li:first-child { border-top: 0; }
+.tag { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-right: 8px; }
+.error .tag { color: var(--error); } .warning .tag { color: var(--warning); }
+.where { display: block; margin-top: 2px; }
+img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.thumb { max-width: 240px; margin-top: 8px; cursor: zoom-in; outline: 0; }
+.thumb:focus { max-width: 100%; cursor: zoom-out; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0 24px; }
+.pair figure { margin: 0; } .pair figcaption { font-size: 13px; color: var(--fg2); margin-bottom: 4px; }
+.question { padding: 12px 0; border-top: 1px solid var(--line); }
+.question:first-of-type { border-top: 0; }
+.ok { color: var(--ok); }
+@media (max-width: 560px) { .pair { grid-template-columns: 1fr; } main { padding-top: 32px; } }
+</style>
+</head>
+<body>
+<main>
+<h1>{{TITLE}}</h1>
+<p class="meta">{{DATE}}</p>
+{{CHECKED}}
+{{FINDINGS}}
+{{BEFORE_AFTER}}
+{{QUESTIONS}}
+</main>
+</body>
+</html>

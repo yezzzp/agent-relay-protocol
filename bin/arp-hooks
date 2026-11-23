@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+#
+# arp-hooks — connects the quota bridge to Claude Code.
+#
+# The plugin's hooks/hooks.json provides the UserPromptSubmit quota notice, the
+# ExitPlanMode plan capture and the StopFailure rate-limit hook. The only thing a
+# plugin cannot set is the status line, so this script writes to
+# ~/.claude/settings.json:
+#   statusLine   -> persists rate_limits to ~/.claude/arp/quota.json
+# and REMOVES the legacy entries for those three hooks that point into this repo
+# (left by older versions), so they do not run twice.
+#
+# It respects what you already have: it adds, never replaces. It makes a backup
+# before touching anything and is idempotent.
+#
+# Usage:
+#   arp-hooks install [--threshold 80]
+#   arp-hooks uninstall
+#   arp-hooks status
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SETTINGS="$HOME/.claude/settings.json"
+ACTION="${1:-status}" ; THRESHOLD=80
+shift || true
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --threshold) THRESHOLD="${2:-80}"; shift 2 ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; exit 1 ;;
+  esac
+done
+
+command -v jq >/dev/null 2>&1 || { printf '✗ jq is required for the quota bridge\n' >&2; exit 1; }
+
+REPO_DIR="$REPO_DIR" SETTINGS="$SETTINGS" ACTION="$ACTION" THRESHOLD="$THRESHOLD" \
+python3 <<'PY'
+import json, os, shutil, sys
+from datetime import datetime
+
+repo   = os.environ["REPO_DIR"]
+path   = os.environ["SETTINGS"]
+action = os.environ["ACTION"]
+thr    = os.environ["THRESHOLD"]
+
+STATUSLINE = f"{repo}/statusline/arp-statusline.sh"
+
+# Hooks the plugin provides now. Entries pointing into this repo are legacy.
+LEGACY = ("UserPromptSubmit", "PostToolUse", "StopFailure")
+
+os.makedirs(os.path.dirname(path), exist_ok=True)
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except FileNotFoundError:
+    cfg = {}
+except json.JSONDecodeError as e:
+    sys.exit(f"✗ {path} is not valid JSON ({e}). Nothing was touched.")
+
+def entries(event):
+    return cfg.get("hooks", {}).get(event, [])
+
+def is_ours(h):
+    return str(h.get("command", "")).startswith(repo)
+
+def count_ours(event):
+    return sum(1 for grp in entries(event) for h in grp.get("hooks", []) if is_ours(h))
+
+def count_others(event):
+    return sum(1 for grp in entries(event) for h in grp.get("hooks", []) if not is_ours(h))
+
+def drop_ours(event):
+    removed = count_ours(event)
+    if not removed:
+        return 0
+    kept = []
+    for grp in entries(event):
+        grp["hooks"] = [h for h in grp.get("hooks", []) if not is_ours(h)]
+        if grp["hooks"]:
+            kept.append(grp)
+    if kept:
+        cfg["hooks"][event] = kept
+    else:
+        del cfg["hooks"][event]
+    if not cfg["hooks"]:
+        del cfg["hooks"]
+    return removed
+
+if action == "status":
+    sl = cfg.get("statusLine", {}).get("command", "")
+    print(f"  statusLine      : {'ARP' if sl.startswith(repo) else (sl or '(not configured)')}")
+    for ev in LEGACY:
+        n = count_ours(ev)
+        state = f"legacy entry in settings ({n}): run arp-hooks install to remove it" if n else "from the plugin"
+        print(f"  {ev:<16}: {state}  (others: {count_others(ev)})")
+    print(f"  threshold       : {cfg.get('env', {}).get('ARP_QUOTA_THRESHOLD', os.environ.get('ARP_QUOTA_THRESHOLD', thr))}%")
+    sys.exit(0)
+
+# Backup before any write.
+if os.path.exists(path):
+    bak = f"{path}.arp-bak-{datetime.now():%Y%m%d%H%M%S}"
+    shutil.copy2(path, bak)
+    print(f"  backup: {bak}")
+
+if action == "install":
+    prev = cfg.get("statusLine", {}).get("command", "")
+    if prev and not prev.startswith(repo):
+        print(f"  ! you already have your own statusLine:\n      {prev}")
+        print( "    ARP does NOT replace it. To get the quota, add to your script:")
+        print(f"      {STATUSLINE}   # or copy its persistence block")
+    else:
+        cfg["statusLine"] = {"type": "command", "command": STATUSLINE}
+        print("  ✓ statusLine")
+
+    for ev in LEGACY:
+        n = drop_ours(ev)
+        if n:
+            print(f"  ✓ {ev}: removed {n} legacy entry(ies) — the plugin provides it now")
+
+    env = cfg.setdefault("env", {})
+    env["ARP_QUOTA_THRESHOLD"] = str(thr)
+    print(f"  ✓ threshold {thr}%")
+
+elif action == "uninstall":
+    if cfg.get("statusLine", {}).get("command", "").startswith(repo):
+        del cfg["statusLine"]; print("  ✓ statusLine removed")
+    for ev in LEGACY:
+        drop_ours(ev)
+    cfg.get("env", {}).pop("ARP_QUOTA_THRESHOLD", None)
+    if cfg.get("env") == {}:
+        del cfg["env"]
+    print("  ✓ ARP entries removed (yours are untouched)")
+else:
+    sys.exit(f"Unknown action: {action}")
+
+tmp = path + ".arp-tmp"
+with open(tmp, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+os.replace(tmp, path)
+print(f"  → {path}")
+PY

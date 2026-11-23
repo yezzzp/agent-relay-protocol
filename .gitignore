@@ -1,0 +1,11 @@
+# Graphify
+graphify-out/
+
+# ARP runtime (only the project config is tracked)
+.arp/*
+!.arp/config.toml
+!.arp/flows.toml
+
+# Python
+__pycache__/
+*.pyc

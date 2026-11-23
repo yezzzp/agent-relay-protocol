@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  :root { --bg:#fbfbfa; --fg:#1f2328; --muted:#6a7078; --line:#e3e3df; --accent:#1f5fbf; --warn:#a15c00; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --fg:#e4e6e8; --muted:#8d949c; --line:#2c3035; --accent:#7ab0ff; --warn:#e0a458; --bad:#ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 36px 0 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+  h3 { font-size: 14px; margin: 20px 0 4px; color: var(--muted); }
+  p.meta, p.note { color: var(--muted); margin: 2px 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code { font: 12.5px ui-monospace, monospace; word-break: break-all; }
+  .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>{{TITLE}}</h1>
+<p class="meta">Generated {{GENERATED}}</p>
+{{SECTIONS}}
+</main>
+</body>
+</html>

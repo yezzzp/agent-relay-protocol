@@ -1,0 +1,470 @@
+#!/usr/bin/env bash
+#
+# agent-init — adopt the Agent Relay Protocol in the current project.
+#
+# Split of responsibilities:
+#   this script  → the deterministic part (folders, marker blocks, stack and
+#                  command detection, .arp/config.toml and .arp/flows.toml).
+#                  Idempotent: running it N times gives the same result.
+#   the agent    → what needs judgment (the working-charter interview, merging
+#                  diverging rules, writing sections 1-7 and the charter).
+#
+# Usage:
+#   agent-init                    analyze/adopt the project with Claude Code
+#   agent-init --agent codex      same, with Codex CLI
+#   agent-init --no-agent         only the deterministic part, no AI
+#   agent-init --dry-run          show what it would do, write nothing
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+TPL="$REPO_DIR/templates"
+INJECT="$REPO_DIR/lib/inject.awk"
+
+AGENT="claude" ; DRY=0 ; NO_AGENT=0
+
+C_DIM=$'\033[2m'; C_OK=$'\033[32m'; C_WARN=$'\033[33m'
+C_ERR=$'\033[31m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+
+ok()   { printf '%s✓%s %s\n' "$C_OK"   "$C_OFF" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_WARN" "$C_OFF" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_ERR"  "$C_OFF" "$*" >&2; }
+step() { printf '\n%s%s%s\n' "$C_BOLD" "$*" "$C_OFF"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent|-a) AGENT="${2:-}"; shift 2 ;;
+    --agent=*)  AGENT="${1#*=}"; shift ;;
+    --no-agent) NO_AGENT=1; shift ;;
+    --dry-run)  DRY=1; NO_AGENT=1; shift ;;
+    -h|--help)  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)          err "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
+case "$AGENT" in
+  claude|codex) ;;
+  *) err "Unsupported agent: $AGENT (use claude or codex)"; exit 1 ;;
+esac
+
+# --- utilities ---------------------------------------------------------------
+
+# Bash 5.2 makes "&" special in ${var//pat/repl}; commands are full of "&&".
+shopt -u patsub_replacement 2>/dev/null || true
+
+# inject_block <file> <block>  — creates the file if missing.
+inject_block() {
+  local file="$1" block="$2"
+  if [ "$DRY" -eq 1 ]; then
+    if [ -f "$file" ] && grep -q 'ARP:BEGIN' "$file"; then
+      printf '  %s(dry) would update the block in %s%s\n' "$C_DIM" "$file" "$C_OFF"
+    else
+      printf '  %s(dry) would inject the block in %s%s\n' "$C_DIM" "$file" "$C_OFF"
+    fi
+    return 0
+  fi
+  [ -f "$file" ] || : > "$file"
+  awk -v BLOCK="$block" -f "$INJECT" "$file" > "$file.arp-tmp"
+  mv "$file.arp-tmp" "$file"
+  return 0
+}
+
+stack_field() { # stack_field <stack-file> <field>
+  sed -n "s/^$2: //p" "$1" | head -1
+}
+
+# toml_str <value> — escapes a value for a TOML basic string.
+toml_str() {
+  local v="$1"
+  v="${v//\\/\\\\}"
+  v="${v//\"/\\\"}"
+  printf '%s' "$v"
+}
+
+# --- 0. context --------------------------------------------------------------
+PROJECT_DIR="$(pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+printf '%sAgent Relay Protocol%s %s· %s%s\n' \
+  "$C_BOLD" "$C_OFF" "$C_DIM" "$PROJECT_NAME" "$C_OFF"
+if [ "$DRY" -eq 1 ]; then printf '%s(dry-run: nothing is written)%s\n' "$C_DIM" "$C_OFF"; fi
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  warn "this is not a git repo — relay uses 'git diff' and 'git log'"
+  warn "initialize with: git init"
+fi
+
+# --- 1. stack detection ------------------------------------------------------
+step "Stack"
+STACK_FILE="" ; STACK_NAME="unknown"
+# Order matters: pnpm before npm, uv before poetry.
+for cand in python-uv python-poetry node-pnpm node-npm go rust; do
+  f="$TPL/stacks/$cand.md"
+  [ -f "$f" ] || continue
+  marker="$(stack_field "$f" detect)"
+  if [ -n "$marker" ] && [ -e "$PROJECT_DIR/$marker" ]; then
+    STACK_FILE="$f"; STACK_NAME="$(stack_field "$f" name)"
+    ok "$STACK_NAME ${C_DIM}(by $marker)${C_OFF}"
+    break
+  fi
+done
+
+RUNNER=""
+for r in Makefile justfile Justfile; do
+  if [ -f "$PROJECT_DIR/$r" ]; then RUNNER="$r"; ok "runner: $r"; break; fi
+done
+
+if [ -z "$STACK_FILE" ]; then
+  warn "stack not recognized — the agent will ask for the commands"
+fi
+
+# --- 2. structure ------------------------------------------------------------
+step "Structure"
+if [ "$DRY" -eq 1 ]; then
+  printf '  %s(dry) would create docs/ai/tasks/ and .arp/%s\n' "$C_DIM" "$C_OFF"
+else
+  mkdir -p "$PROJECT_DIR/docs/ai/tasks" "$PROJECT_DIR/.arp"
+  ok "docs/ai/tasks/"
+  if [ ! -f "$PROJECT_DIR/docs/ai/tasks/_TEMPLATE.md" ]; then
+    cp "$TPL/task.md" "$PROJECT_DIR/docs/ai/tasks/_TEMPLATE.md"
+    ok "task file template"
+  fi
+fi
+
+inject_block "$PROJECT_DIR/.gitignore" "$TPL/gitignore-block.txt"
+if [ "$DRY" -eq 0 ]; then ok ".gitignore ${C_DIM}(.arp/ ignored except config.toml and flows.toml)${C_OFF}"; fi
+
+# --- 2.5 working charter files: .arp/config.toml and .arp/flows.toml ---------
+# Values are detected from the repo. Whatever cannot be detected stays "TODO";
+# the agent fills it by asking the owner. Existing files always win.
+step "Working charter files"
+
+detect_branch() { # detect_branch <fallback> <candidate>...
+  local fb="$1" c; shift
+  for c in "$@"; do
+    if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$c" 2>/dev/null; then
+      printf '%s' "$c"; return
+    fi
+  done
+  printf '%s' "$fb"
+}
+
+if [ -n "$STACK_FILE" ]; then
+  V_QUICK="$(stack_field "$STACK_FILE" check)"
+  PM="$(stack_field "$STACK_FILE" package_manager)"
+else
+  V_QUICK="TODO" ; PM=""
+fi
+V_FULL="$V_QUICK"
+
+V_E2E="TODO" ; V_E2E_FULL="TODO"
+for pw in . web frontend; do
+  if ls "$PROJECT_DIR/$pw"/playwright.config.* >/dev/null 2>&1; then
+    case "$PM" in pnpm) X="pnpm exec" ;; npm) X="npx" ;; *) X="npx" ;; esac
+    pre=""; [ "$pw" = "." ] || pre="cd $pw && "
+    V_E2E="${pre}$X playwright test --grep @critical"
+    V_E2E_FULL="${pre}$X playwright test"
+    break
+  fi
+done
+
+DB_PREFIX="$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\+/_/g' -e 's/^_\+//' -e 's/_\+$//')_test_"
+B_INT="$(detect_branch develop develop dev integration)"
+B_PROD="$(detect_branch main main master trunk)"
+
+fill() { # fill <template> <KEY=value>... — prints the template with the values in
+  local out; out="$(cat "$1")"; shift
+  local kv k v
+  for kv in "$@"; do
+    k="${kv%%=*}" ; v="${kv#*=}"
+    out="${out//\{\{$k\}\}/$v}"
+  done
+  printf '%s\n' "$out"
+}
+
+write_once() { # write_once <path> <content> — never overwrites
+  local path="$1" content="$2" rel="${1#"$PROJECT_DIR"/}"
+  if [ -e "$path" ]; then
+    ok "$rel already exists ${C_DIM}(kept)${C_OFF}"
+  elif [ "$DRY" -eq 1 ]; then
+    printf '  %s(dry) would write %s%s\n' "$C_DIM" "$rel" "$C_OFF"
+  else
+    printf '%s\n' "$content" > "$path"
+    ok "$rel written ${C_DIM}(detected values; TODO = ask the owner)${C_OFF}"
+  fi
+}
+
+CONFIG_BODY="$(fill "$TPL/config.toml" \
+  "VERIFY_QUICK=$(toml_str "$V_QUICK")" "VERIFY_FULL=$(toml_str "$V_FULL")" \
+  "VERIFY_E2E=$(toml_str "$V_E2E")" "VERIFY_E2E_FULL=$(toml_str "$V_E2E_FULL")" \
+  "DB_PREFIX=$(toml_str "$DB_PREFIX")" "DB_REBUILD=TODO" \
+  "WEB_PORT=3011" "API_PORT=8011" \
+  "BRANCH_INTEGRATION=$B_INT" "BRANCH_PRODUCTION=$B_PROD" "UI_URL=")"
+FLOWS_BODY="$(fill "$TPL/flows.toml" \
+  "FLOWS=# TODO: add the 5 to 20 main user flows, one table each, as in the example above.")"
+
+write_once "$PROJECT_DIR/.arp/config.toml" "$CONFIG_BODY"
+write_once "$PROJECT_DIR/.arp/flows.toml"  "$FLOWS_BODY"
+
+# --- 3. AGENTS.md ------------------------------------------------------------
+step "Source of truth"
+HAS_AGENTS=0 ; HAS_CLAUDE=0 ; CLAUDE_HAS_CONTENT=0
+if [ -f "$PROJECT_DIR/AGENTS.md" ]; then HAS_AGENTS=1; fi
+if [ -f "$PROJECT_DIR/CLAUDE.md" ]; then HAS_CLAUDE=1; fi
+
+# Does CLAUDE.md hold more than the @AGENTS.md import?
+if [ "$HAS_CLAUDE" -eq 1 ]; then
+  if grep -qvE '^[[:space:]]*(@AGENTS\.md[[:space:]]*)?$' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+    CLAUDE_HAS_CONTENT=1
+  fi
+fi
+
+if [ "$HAS_AGENTS" -eq 0 ] && [ "$DRY" -eq 0 ]; then
+  sed -e "s|{{PROJECT_NAME}}|$PROJECT_NAME|" -e '/{{ARP_BLOCK}}/d' \
+    "$TPL/AGENTS.md" > "$PROJECT_DIR/AGENTS.md"
+  ok "AGENTS.md created from the template ${C_DIM}(with placeholders)${C_OFF}"
+elif [ "$HAS_AGENTS" -eq 1 ]; then
+  ok "AGENTS.md already exists ${C_DIM}(kept)${C_OFF}"
+fi
+
+# The protocol block is always refreshed: that is what makes a `git pull` in
+# agent-core reach every project.
+inject_block "$PROJECT_DIR/AGENTS.md" "$TPL/arp-block.md"
+if [ "$DRY" -eq 0 ]; then ok "ARP block updated"; fi
+
+if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
+  warn "CLAUDE.md has its own content — the agent will merge it into AGENTS.md"
+fi
+
+# --- 3.5 graphify (optional) -------------------------------------------------
+# Only if already installed: agent-init installs no tools, that is install.sh's job.
+GRAPHIFY_DONE=0
+if command -v graphify >/dev/null 2>&1; then
+  step "Graphify ${C_DIM}(optional — dependency map)${C_OFF}"
+  if [ -f "$PROJECT_DIR/graphify-out/graph.json" ]; then
+    ok "the graph already exists ${C_DIM}(refresh with: graphify update .)${C_OFF}"
+    GRAPHIFY_DONE=1
+  elif [ "$DRY" -eq 1 ]; then
+    printf '  %s(dry) would offer to build the AST graph%s\n' "$C_DIM" "$C_OFF"
+  elif [ ! -t 0 ] || [ ! -r /dev/tty ]; then
+    printf '  %sskipped (no terminal). Later: graphify update . && graphify hook install%s\n' "$C_DIM" "$C_OFF"
+  else
+    printf '  %sBuilds the project dependency graph with tree-sitter.\n' "$C_DIM"
+    printf '  No LLM and no API keys: it spends no quota. It leaves graphify-out/,\n'
+    printf '  which the .gitignore block already ignores.%s\n' "$C_OFF"
+    printf '  Build it now? [Y/n] '
+    read -r ans < /dev/tty || ans=""
+    if [[ ! "$ans" =~ ^[nN]$ ]]; then
+      if (cd "$PROJECT_DIR" && graphify update . >/dev/null 2>&1); then
+        ok "graph built ${C_DIM}($(graphify god-nodes --top 1 --graph "$PROJECT_DIR/graphify-out/graph.json" 2>/dev/null | head -1))${C_OFF}"
+        GRAPHIFY_DONE=1
+        # Git hook: re-extracts only what changed on each commit. No daemon.
+        if (cd "$PROJECT_DIR" && graphify hook install >/dev/null 2>&1); then
+          ok "post-commit hook ${C_DIM}(the graph keeps itself up to date)${C_OFF}"
+        else
+          warn "the post-commit hook failed — install it with: graphify hook install"
+        fi
+        # Per-platform integration: pushes the agent to query the graph before
+        # reading raw files. For codex it writes to AGENTS.md; for claude, to
+        # CLAUDE.md plus a PreToolUse hook.
+        #
+        # Installed for the platforms chosen in install.sh, not for the --agent
+        # flag: that flag says who drives THIS interview, not which agents you
+        # work with. Without the file (old install), it falls back to the PATH.
+        TARGETS_FILE="$HOME/.claude/arp/targets"
+        if [ -s "$TARGETS_FILE" ]; then
+          GFY_TARGETS="$(tr -d ' \t' < "$TARGETS_FILE" | grep -E '^(claude|codex)$' || true)"
+        else
+          GFY_TARGETS=""
+          for a in claude codex; do
+            command -v "$a" >/dev/null 2>&1 && GFY_TARGETS="$GFY_TARGETS$a"$'\n'
+          done
+        fi
+        [ -n "$GFY_TARGETS" ] || GFY_TARGETS="$AGENT"
+
+        while IFS= read -r plat; do
+          [ -n "$plat" ] || continue
+          if (cd "$PROJECT_DIR" && graphify "$plat" install >/dev/null 2>&1); then
+            ok "integration with $plat"
+          else
+            warn "the integration with $plat failed — install it with: graphify $plat install"
+          fi
+        done <<< "$GFY_TARGETS"
+      else
+        warn "graphify update failed — try by hand: graphify update ."
+      fi
+    else
+      printf '  %sskipped — you can do it later with: graphify update .%s\n' "$C_DIM" "$C_OFF"
+    fi
+  fi
+
+  # graphify writes the SAME section in CLAUDE.md (claude install) and in AGENTS.md
+  # (codex install). Since CLAUDE.md imports AGENTS.md, Claude would read it twice
+  # on every turn. The CLAUDE.md copy is removed and the AGENTS.md one kept, which
+  # both agents see. The PreToolUse hook —what actually enforces the rule— lives in
+  # .claude/settings.json and is left alone.
+  #
+  # Outside the build branch on purpose: it also repairs a project that is already
+  # duplicated. Idempotent.
+  if [ "$DRY" -eq 0 ] \
+     && grep -q '^## graphify' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null \
+     && grep -q '^## graphify' "$PROJECT_DIR/AGENTS.md" 2>/dev/null; then
+    awk '
+      /^## graphify[[:space:]]*$/ { skip=1; next }
+      skip && /^## /              { skip=0 }
+      !skip                       { print }
+    ' "$PROJECT_DIR/CLAUDE.md" > "$PROJECT_DIR/CLAUDE.md.arp-tmp" \
+      && mv "$PROJECT_DIR/CLAUDE.md.arp-tmp" "$PROJECT_DIR/CLAUDE.md"
+    ok "duplicated graphify section removed from CLAUDE.md ${C_DIM}(it stays in AGENTS.md)${C_OFF}"
+  fi
+fi
+
+# --- 4. summary / prompt -----------------------------------------------------
+if [ "$NO_AGENT" -eq 1 ]; then
+  printf '\n%sDone (deterministic part).%s\n' "$C_OK" "$C_OFF"
+  if [ "$DRY" -eq 0 ]; then
+    printf '%sReview AGENTS.md and fill its {{placeholders}}.%s\n' "$C_DIM" "$C_OFF"
+    printf '%sReview .arp/config.toml and .arp/flows.toml and replace every TODO.%s\n' "$C_DIM" "$C_OFF"
+  fi
+  exit 0
+fi
+
+STACK_HINT="The stack was not recognized. Ask the user for the commands of section 3."
+if [ -n "$STACK_FILE" ]; then
+  STACK_HINT="Detected stack: $STACK_NAME
+- Package manager: $(stack_field "$STACK_FILE" package_manager)  <- do NOT ask this, the lockfile already confirms it
+- Language: $(stack_field "$STACK_FILE" language)
+Suggested commands (check them against the project before writing them):
+- install:  $(stack_field "$STACK_FILE" install)
+- dev:      $(stack_field "$STACK_FILE" dev)
+- check:    $(stack_field "$STACK_FILE" check)
+- test_one: $(stack_field "$STACK_FILE" test_one)"
+fi
+if [ -n "$RUNNER" ]; then
+  STACK_HINT="$STACK_HINT
+There is a $RUNNER at the root: read it and use its targets instead of the raw commands."
+fi
+
+# graphify may have created or touched CLAUDE.md AFTER the check in section 3, so
+# it is looked at again here: otherwise the agent would be told "CLAUDE.md does not
+# exist, create it with a single line" and erase the section just written.
+CLAUDE_HAS_GRAPHIFY=0
+if [ -f "$PROJECT_DIR/CLAUDE.md" ] && grep -q '^## graphify' "$PROJECT_DIR/CLAUDE.md" 2>/dev/null; then
+  CLAUDE_HAS_GRAPHIFY=1 ; HAS_CLAUDE=1
+fi
+
+CLAUDE_HINT=""
+if [ "$CLAUDE_HAS_CONTENT" -eq 1 ]; then
+  CLAUDE_HINT="
+CLAUDE.md has its own content. Migrate it to AGENTS.md without losing information:
+merge each rule into the section it belongs to and, ONLY when AGENTS.md already
+contains them, replace CLAUDE.md with a single line: @AGENTS.md
+If a rule contradicts what AGENTS.md already says, ask the user which one wins."
+elif [ "$HAS_CLAUDE" -eq 0 ]; then
+  CLAUDE_HINT="
+There is no CLAUDE.md. Create it with a single line: @AGENTS.md"
+fi
+
+if [ "$CLAUDE_HAS_GRAPHIFY" -eq 1 ]; then
+  CLAUDE_HINT="$CLAUDE_HINT
+CLAUDE.md already contains a '## graphify' section written by the tool itself.
+Put @AGENTS.md as the FIRST line of the file and leave that section intact below it.
+Do not migrate it to AGENTS.md, do not rewrite it and do not delete it: it regenerates itself."
+fi
+
+GRAPHIFY_HINT=""
+if [ "$GRAPHIFY_DONE" -eq 1 ]; then
+  GRAPHIFY_HINT="
+This project has a dependency graph in graphify-out/. Use it to deduce the structure
+of section 4 instead of walking directories by hand:
+  graphify god-nodes             the hubs of the repo
+  graphify affected \"<symbol>\"   what depends on something
+If graphify wrote a '## graphify' section in AGENTS.md, do not touch it."
+fi
+
+CONFIG_HINT="Detected: verify.quick='$V_QUICK', verify.e2e='$V_E2E', branches: integration='$B_INT', production='$B_PROD', db_prefix='$DB_PREFIX'. Entries equal to TODO were NOT detected: ask for them."
+
+read -r -d '' PROMPT <<EOF || true
+You are a software architect setting up how this project works with coding agents.
+
+ALREADY DONE BY THE SCRIPT (do not redo it):
+- docs/ai/tasks/ exists.
+- .gitignore has the ARP block (.arp/ is ignored except config.toml and flows.toml).
+- AGENTS.md exists and its section 8 (between ARP:BEGIN and ARP:END) is in place.
+  Do NOT touch that section: agent-init manages it and overwrites it on every run.
+- .arp/config.toml and .arp/flows.toml exist, filled with detected values and TODOs.
+  $CONFIG_HINT
+
+$STACK_HINT
+$CLAUDE_HINT
+$GRAPHIFY_HINT
+
+YOUR TASK, in this order: first the working charter, then sections 1 to 7 of AGENTS.md.
+Before anything about the project's features, set HOW the project works.
+
+STEP A — WORKING CHARTER. For each item, first try to DETECT it from the repo
+(README, docs/, CI files, Makefile, package.json, test folders, git branches). Show
+what you found and ask the user only to CONFIRM or correct it. Ask directly only for
+what no file reveals.
+  1. Verify commands: quick, full, e2e (critical end-to-end tests), e2e_full.
+     Run each one that exists to check that it works. Write them in .arp/config.toml [verify].
+     If a tier does not exist yet, propose the minimum viable one and confirm it.
+  2. The 5 to 20 main user flows, ONE sentence each ("A customer fills a cart, pays
+     and gets a receipt."). Write them in .arp/flows.toml, one table per flow with
+     says = "..." and critical = true|false.
+  3. The business rules that compute or decide something (money, stock, permissions,
+     states, dates). Each one gets TDD. List them in the "Working charter" section of
+     AGENTS.md as "- <rule> — <where it lives>", and also in section 6.
+  4. Ports, test database prefix and rebuild command, and branch names. Write them in
+     .arp/config.toml [env] and [branches]. Existing branch names WIN: never rename.
+Then replace every TODO in .arp/config.toml. A key you cannot confirm stays TODO and
+you tell the user. Keep the keys and sections of the file; do not invent new ones.
+
+STEP B — SECTIONS 1 TO 7 of AGENTS.md.
+FIRST read AGENTS.md whole. If sections 1 to 7 and the charter are already written,
+with no {{placeholder}}, and describe the project as it is today, and .arp/config.toml
+has no TODO: say so in ONE line and FINISH without asking anything or editing anything.
+
+Re-running agent-init on an already adopted project must be a no-op. Do not propose
+improvements nobody asked for, do not reorder, do not "polish" the wording. Only act
+if something is missing or the repo changed and the document went stale — and then
+touch only what is stale.
+
+RULES:
+1. NEVER ask what you can read from the repo. Inspect files, lockfiles, package.json,
+   the Makefile and the directory tree before opening your mouth. The package manager,
+   the commands and the structure are deduced, not asked. That includes the existing
+   DOCUMENTATION: README, docs/, loose *.md. Read all of it before asking anything.
+   What those documents already decide — stack, architecture, business rules, scope —
+   is CLOSED: summarize it in AGENTS.md, do not propose it again or reopen it. If two
+   documents contradict each other, the one declared as governing wins; if none is,
+   ask which one wins (a single question) and note the answer.
+2. Existing CLAUDE.md, AGENTS.md, test layout and branch names win. Add blocks and
+   sections; never rewrite what is there.
+3. Ask ONLY the gaps no file reveals — typically sections 5 (conventions), 6 (business
+   rules) and 7 (do not touch).
+4. One question at a time. Short and concrete. No giant lists.
+5. Empty means no code AND NO DESIGN DOCUMENTATION. A repo with specs but not a single
+   line of code is NOT empty: there the job is to distill those documents into
+   AGENTS.md, not to interview.
+   Only if it is truly empty, run the full architecture interview:
+   idea and problem -> propose 2-3 stacks with their rationale -> MVP modules ->
+   business rules. Save the result in AGENTS.md.
+6. Section 3 must end up with a REAL, runnable verify command. If the project has none,
+   propose the minimum viable one for its stack (format + lint + types + tests) and
+   confirm it with the user.
+7. AGENTS.md is read on every turn: keep it under ~150 lines. If a linter can enforce
+   a rule, do not write it.
+8. Leave no {{placeholder}} unresolved. The text of AGENTS.md follows the language of
+   the project's own documentation; the plugin's files stay in English.
+
+When done, show a one-line summary per section and per file written.
+EOF
+
+step "Launching $AGENT"
+if ! command -v "$AGENT" >/dev/null 2>&1; then
+  err "'$AGENT' is not installed."
+  printf '%sThe deterministic part is done.%s\n' "$C_DIM" "$C_OFF"
+  exit 1
+fi
+exec "$AGENT" "$PROMPT"

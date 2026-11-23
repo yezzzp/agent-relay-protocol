@@ -1,0 +1,52 @@
+{
+  "description": "agent-core: inject the workflow at session start and after compaction; quota bridge and plan capture.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/lib/run.py\" session-start --event startup",
+            "timeout": 10,
+            "statusMessage": "Loading agent-core workflow..."
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/lib/run.py\" session-start --event compact",
+            "timeout": 10,
+            "statusMessage": "Reloading agent-core workflow after compaction..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/arp-quota-notice.sh\"", "timeout": 2 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/arp-plan-capture.sh\"", "timeout": 5 }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "rate_limit",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/arp-rate-limit.sh\"", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}

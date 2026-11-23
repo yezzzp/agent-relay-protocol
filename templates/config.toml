@@ -1,0 +1,33 @@
+# Project working config, written by agent-init and read by the agent-core plugin.
+# Tracked in git. Fill every TODO; `arp config check` fails on a missing key.
+
+[verify]
+quick    = "{{VERIFY_QUICK}}"      # run on every change
+full     = "{{VERIFY_FULL}}"       # run by the integrator
+e2e      = "{{VERIFY_E2E}}"        # critical end-to-end tests, on every integration
+e2e_full = "{{VERIFY_E2E_FULL}}"   # full end-to-end suite, only before production
+
+[env]
+db_prefix  = "{{DB_PREFIX}}"       # test database name prefix, one database per worktree
+db_rebuild = "{{DB_REBUILD}}"      # rebuilds a test database; {name} is replaced
+web_port   = {{WEB_PORT}}          # first free port; each worktree takes the next
+api_port   = {{API_PORT}}
+
+[branches]
+integration = "{{BRANCH_INTEGRATION}}"
+production  = "{{BRANCH_PRODUCTION}}"
+
+[sessions]
+soft_limit = 3        # warn above this; never block
+idle_hours = 6        # waiting on the owner longer than this: offer relay and close
+
+[tests]
+record       = true
+suspect_runs = 10     # covered code changed this many times and the test never failed
+e2e_per_flow = 3      # the guard fails above this
+
+[ui]
+url       = "{{UI_URL}}"           # empty when the project has no web UI
+login     = ""                     # command or script that logs in, if needed
+viewports = ["1440x900", "390x844"]
+themes    = ["light", "dark"]

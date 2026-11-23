@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fixture</title>
+<style>
+body { font: 16px sans-serif; margin: 24px; } .cut { width: 60px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#chat, #panel { border: 1px solid #ccc; padding: 8px; margin: 8px 0; }
+</style></head>
+<body>
+<main>
+  <h1>Inventory overview</h1>
+  <section>
+    <h2>Stock by warehouse</h2>
+    <p class="sub">Stock by warehouse</p>
+  </section>
+  <div class="cut">A very long label that does not fit</div>
+  <table><tr><td>Total</td><td>Total</td></tr><tr><td>Total</td><td>Total</td></tr></table>
+  <div id="chat"><div data-message>Hello</div><div data-message>The warehouse north holds 120 pallets and the warehouse south holds 80 pallets awaiting dispatch</div></div>
+  <aside id="panel"><p>Warehouse north: 120 pallets. Warehouse south: 80 pallets awaiting dispatch.</p></aside>
+</main>
+</body></html>

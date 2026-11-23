@@ -1,0 +1,14 @@
+{
+  "name": "agent-core",
+  "description": "agent-core: one way of working with coding agents in every project.",
+  "owner": {
+    "name": "yezzzp"
+  },
+  "plugins": [
+    {
+      "name": "agent-core",
+      "source": "./",
+      "description": "One way of working in every project: isolated sessions, a scripted integrator, tests chosen before code, cheap UI checks, shared memory and one style."
+    }
+  ]
+}

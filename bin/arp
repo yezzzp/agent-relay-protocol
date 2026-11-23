@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+#
+# arp — agent-core command line.
+#
+# Installation commands live here. Everything else is a Python subcommand in
+# lib/agentcore/cmd_*.py (run `arp --help` for the list).
+#
+# Usage:
+#   arp doctor      what is installed and where
+#   arp update      git pull in the repo, then reinstall
+#   arp uninstall   remove links and hooks (does NOT delete the repo)
+#   arp where       print the repo path
+#   arp <command>   project commands: status, adopt, decline, audit, projects,
+#                   integrate, release, sessions, worktrees, test-health, test-guard …
+
+set -euo pipefail
+
+ARP_HOME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+BIN_DIR="$HOME/.local/bin"
+
+C_DIM=$'\033[2m'; C_OK=$'\033[32m'; C_WARN=$'\033[33m'
+C_ERR=$'\033[31m'; C_BOLD=$'\033[1m'; C_OFF=$'\033[0m'
+ok()   { printf '%s✓%s %s\n' "$C_OK"   "$C_OFF" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_WARN" "$C_OFF" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_ERR"  "$C_OFF" "$*" >&2; }
+
+case "${1:-}" in
+
+  where) printf '%s\n' "$ARP_HOME" ;;
+
+  doctor)
+    printf '%sagent-core%s\n' "$C_BOLD" "$C_OFF"
+    if [ -d "$ARP_HOME/.git" ]; then
+      ok "repo at $ARP_HOME"
+      d="$(git -C "$ARP_HOME" status --porcelain 2>/dev/null | wc -l)"
+      printf '  %s%s%s%s\n' "$C_DIM" \
+        "$(git -C "$ARP_HOME" log -1 --format='%h %s (%cr)' 2>/dev/null || echo 'no commits')" \
+        "$([ "$d" -gt 0 ] && printf ' · %s uncommitted file(s)' "$d")" "$C_OFF"
+    else
+      warn "$ARP_HOME is not a git repo"
+    fi
+    printf '\n%sCommands%s\n' "$C_BOLD" "$C_OFF"
+    for c in agent-init arp arp-hooks; do
+      if [ -L "$BIN_DIR/$c" ]; then ok "$c"; else warn "$c not linked"; fi
+    done
+    printf '\n%sClaude Code plugin%s\n' "$C_BOLD" "$C_OFF"
+    if grep -q '"agent-core@' "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null; then
+      ok "agent-core installed"
+    else
+      warn "not installed: /plugin marketplace add yezzzp/agent-relay-protocol"
+    fi
+    printf '\n%sCodex skills%s\n' "$C_BOLD" "$C_OFF"
+    n=0
+    if [ -d "$HOME/.agents/skills" ]; then
+      for l in "$HOME/.agents/skills"/*; do
+        if [ -L "$l" ] && [[ "$(readlink "$l")" == "$ARP_HOME"* ]]; then n=$((n+1)); fi
+      done
+    fi
+    if [ "$n" -gt 0 ]; then ok "$n in ~/.agents/skills"; else printf '  %snone%s\n' "$C_DIM" "$C_OFF"; fi
+    printf '\n%sStatusline and quota bridge%s\n' "$C_BOLD" "$C_OFF"
+    "$ARP_HOME/bin/arp-hooks" status || true
+    ;;
+
+  update)
+    [ -d "$ARP_HOME/.git" ] || { err "$ARP_HOME is not a git repo"; exit 1; }
+    if [ -n "$(git -C "$ARP_HOME" status --porcelain)" ]; then
+      err "uncommitted changes in $ARP_HOME: commit or stash first"; exit 1
+    fi
+    before="$(git -C "$ARP_HOME" rev-parse HEAD)"
+    git -C "$ARP_HOME" pull --ff-only
+    after="$(git -C "$ARP_HOME" rev-parse HEAD)"
+    if [ "$before" = "$after" ]; then
+      ok "already up to date"
+    else
+      ok "updated: $(git -C "$ARP_HOME" log --oneline "$before..$after" | wc -l) commit(s)"
+      "$ARP_HOME/install.sh" --all --yes
+    fi
+    printf '%sIn Claude Code, also run: claude plugin update agent-core@agent-core%s\n' "$C_DIM" "$C_OFF"
+    ;;
+
+  uninstall)
+    printf '%sThis removes:%s links in %s and in ~/.agents/skills, and the statusline hook.\n' \
+      "$C_BOLD" "$C_OFF" "$BIN_DIR"
+    printf '%sKept:%s the repo, your projects, and the database in ~/.local/share/agent-core.\n' \
+      "$C_DIM" "$C_OFF"
+    if [ -t 0 ] && [ -r /dev/tty ]; then
+      printf '\nContinue? [y/N] '
+      read -r a < /dev/tty || a=""
+      case "$a" in [yY]) ;; *) printf 'Cancelled.\n'; exit 0 ;; esac
+    fi
+    "$ARP_HOME/install.sh" --uninstall
+    printf '%sIn Claude Code, also run: /plugin uninstall agent-core%s\n' "$C_DIM" "$C_OFF"
+    ;;
+
+  -h|--help|"")
+    sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+    printf '\n'
+    exec python3 -I "$ARP_HOME/lib/run.py" --help
+    ;;
+
+  *) exec python3 -I "$ARP_HOME/lib/run.py" "$@" ;;
+esac
