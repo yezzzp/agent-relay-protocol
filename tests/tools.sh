@@ -35,6 +35,7 @@ has "with its install command" "$out" "astral.sh/uv"
 has "pnpm comes from the e2e command" "$out" "✗ pnpm (verify.e2e)"
 has "missing project deps are listed" "$out" "uv sync"
 hasnt "git is present, so not listed" "$out" "✗ git"
+hasnt "a database prefix is not a tool" "$out" "shop_test_"
 [ "$code" -eq 1 ] && ok "exit 1 when something is missing" || ko "exit 1" "got $code"
 (cd "$P" && "$REPO/bin/arp" adopt >/dev/null)
 hook="$(printf '{"cwd":"%s"}' "$P" | PATH="$BIN" "$REPO/bin/arp" session-start)"

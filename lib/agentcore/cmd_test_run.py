@@ -2,9 +2,11 @@
 
 Capture never edits the project's tests or config:
 
-* pytest: ``PYTEST_ADDOPTS`` gets ``--junitxml=<tmp>`` (works through ``uv run``,
-  ``make``, scripts, xdist). A command that sets its own ``--junitxml`` wins and
-  is then not captured.
+* pytest: ``PYTEST_ADDOPTS`` gets ``-p arp_junit`` (lib/pytest_plugin, on
+  ``PYTHONPATH``), so every pytest process writes its own JUnit file in
+  ``$ARP_JUNIT_DIR``. It works through ``uv run``, ``make``, scripts and xdist,
+  and two pytest calls in one command are both recorded. A command that sets
+  its own ``--junitxml`` keeps it.
 * Playwright: ``PLAYWRIGHT_JSON_OUTPUT_FILE=<tmp>`` is always set, and when the
   command line contains ``playwright test`` the flag ``--reporter=list,json`` is
   inserted right after it (replacing the project's reporters for that run).
@@ -66,7 +68,10 @@ def run(args) -> int:
     tmp = Path(tempfile.mkdtemp(prefix="arp-test-run-"))
     junit, pw = tmp / "junit.xml", tmp / "playwright.json"
     if recording:
-        env["PYTEST_ADDOPTS"] = f"{env.get('PYTEST_ADDOPTS', '')} --junitxml={shlex.quote(str(junit))}".strip()
+        plugin_dir = str(Path(__file__).resolve().parents[1] / "pytest_plugin")
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (plugin_dir, env.get("PYTHONPATH", "")) if p)
+        env["ARP_JUNIT_DIR"] = str(tmp)
+        env["PYTEST_ADDOPTS"] = f"{env.get('PYTEST_ADDOPTS', '')} -p arp_junit".strip()
         env["PLAYWRIGHT_JSON_OUTPUT_FILE"] = str(pw)
         to_run = _inject_playwright(to_run)
     start = time.monotonic()
@@ -90,7 +95,8 @@ def run(args) -> int:
 
 def _record(project, args, command, junit: Path, pw: Path, elapsed: float) -> None:
     results: list[testdata.Result] = []
-    for path, parse in ((junit, lambda p: testdata.parse_junit(p, project.root)), (pw, testdata.parse_playwright)):
+    reports = [(p, lambda f: testdata.parse_junit(f, project.root)) for p in sorted(junit.parent.glob("junit*.xml"))]
+    for path, parse in [*reports, (pw, testdata.parse_playwright)]:
         if path.is_file() and path.stat().st_size:
             try:
                 results += parse(path)[0]

@@ -83,13 +83,25 @@ cat > "$WORK/junit.xml" <<'X'
 X
 (cd "$r4" && "$ARP" test-record --tier unit --runner session --junit "$WORK/junit.xml" >/dev/null)
 hook "$r4" >/dev/null
-for i in $(seq 1 30); do [ -f "$WORK/reports/reported/latest.json" ] && break; sleep 0.2; done
-[ -f "$WORK/reports/reported/latest.json" ] && ok "a due report is written in the background" || ko "a due report is written in the background" "no latest.json"
-ls "$WORK"/reports/reported/test-health-*.html >/dev/null 2>&1 && ok "the report page exists" || ko "the report page exists" "no html"
+for i in $(seq 1 30); do [ -f $WORK/reports/reported-*/latest.json ] && break; sleep 0.2; done
+[ -f $WORK/reports/reported-*/latest.json ] && ok "a due report is written in the background" || ko "a due report is written in the background" "no latest.json"
+ls $WORK/reports/reported-*/test-health-*.html >/dev/null 2>&1 && ok "the report page exists" || ko "the report page exists" "no html"
 has   "the next session mentions the report" "$(hook "$r4")" "## Test health ("
-before="$(stat -c %Y "$WORK/reports/reported/latest.json")"
+before="$(stat -c %Y $WORK/reports/reported-*/latest.json)"
 hook "$r4" >/dev/null; sleep 1
-[ "$before" = "$(stat -c %Y "$WORK/reports/reported/latest.json")" ] && ok "not due again the same day" || ko "not due again the same day" "rewritten"
+[ "$before" = "$(stat -c %Y $WORK/reports/reported-*/latest.json)" ] && ok "not due again the same day" || ko "not due again the same day" "rewritten"
+
+# a writer holding the database never slows or blanks a session
+python3 -I - "$AGENT_CORE_DB" <<'PY' &
+import sqlite3, sys, time
+c = sqlite3.connect(sys.argv[1], isolation_level=None)
+c.execute("BEGIN IMMEDIATE"); c.execute("UPDATE projects SET name = name"); time.sleep(8)
+PY
+LOCKER=$!; sleep 0.5
+t0=$(date +%s%N); out="$(hook "$r4")"; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+kill $LOCKER 2>/dev/null; wait $LOCKER 2>/dev/null
+has "a busy database still injects the workflow" "$out" "## Every task"
+[ "$ms" -lt 1500 ] && ok "and does not wait for it (${ms} ms)" || ko "and does not wait for it" "${ms} ms"
 
 printf 'default = "off"\n' > "$AGENT_CORE_CONFIG_HOME/config.toml"
 r2="$(newrepo quiet)"

@@ -130,7 +130,7 @@ def significant(facts: dict) -> str:
 
 def audit(root: Path, use_cache: bool = True) -> dict:
     head = git(root, "rev-parse", "HEAD") or "no-head"
-    status = git(root, "status", "--porcelain", "--untracked-files=no")
+    status = git(root, "status", "--porcelain", "--untracked-files=normal")
     stamp = hashlib.sha1(f"{root}|{head}|{status}".encode()).hexdigest()
     path = cache_dir() / f"{stamp}.json"
     if use_cache and path.is_file():

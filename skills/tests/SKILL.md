@@ -63,7 +63,7 @@ First look for this project's own cases: the business rules listed under `## Wor
 | `arp test-run --tier <t> --runner session -- <cmd>` | Wraps a test command and records its results in the shared local database. |
 | `arp test-health` | Report: cost, flaky tests, value, suspects, duplicates, trend. `--all` compares projects. |
 | `arp test-health --mutate <test>` | Checks a suspect with mutation testing. A test that no mutant breaks is a delete candidate, and the owner approves each deletion. |
-| `arp test-report` | The periodic report. Every `tests.report_every_days` (default 7), the session-start hook writes it in the background to `~/.local/share/agent-core/reports/<project>/` and the next session tells the owner what changed: new suspects, flaky tests. Publish the page as a private artifact when the owner wants to see it. |
+| `arp test-report` | The periodic report. Every `tests.report_every_days` (default 7), the session-start hook writes it in the background to `~/.local/share/agent-core/reports/<project>-<id>/` and the next session tells the owner what changed: new suspects, flaky tests. Publish the page as a private artifact when the owner wants to see it. |
 
 ## Adding a user flow
 A flow is one sentence in `.arp/flows.toml`. Add one only for a new end-to-end path the owner cares about. The integration report shows it to them.

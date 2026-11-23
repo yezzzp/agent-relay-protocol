@@ -6,7 +6,6 @@ must never fail the session: any error prints nothing and exits 0.
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -64,15 +63,12 @@ def next_step(text: str) -> str:
     return match.group(1).strip() if match else "no open task"
 
 
-def sessions_count(root: Path) -> str:
-    run_py = Path(__file__).resolve().parents[1] / "run.py"
+def sessions_count(root: Path, soft: int) -> str:
+    from agentcore import gitwt
+
     try:
-        out = subprocess.run(
-            [sys.executable, "-I", str(run_py), "sessions", "--count"],
-            cwd=root, capture_output=True, text=True, timeout=1.5,
-        )
-        return out.stdout.strip() if out.returncode == 0 else ""
-    except (OSError, subprocess.TimeoutExpired):
+        return f"{gitwt.claude_count([w['path'] for w in gitwt.worktrees(root)])}/{soft}"
+    except Exception:
         return ""
 
 
@@ -88,7 +84,7 @@ def project_lines(root: Path) -> list[str]:
         lines.append(f"- test database prefix `{env['db_prefix']}`; first ports web {env['web_port']}, api {env['api_port']}")
     flows = ", ".join(project.flows) if project.flows else "none listed"
     lines.append(f"- user flows: {flows}")
-    if count := sessions_count(root):
+    if count := sessions_count(root, int(c["sessions"]["soft_limit"])):
         lines.append(f"- sessions: {count}")
     return ["## This project", *lines]
 
@@ -109,9 +105,9 @@ def test_report_lines(conn, project, root: Path) -> list[str]:
 
     cfg = load_project(root)
     every = int(cfg.config["tests"].get("report_every_days", 7)) if cfg else 7
-    if report.has_runs(conn, project["id"]) and report.is_due(project["name"], every):
+    if report.has_runs(conn, project["id"]) and report.is_due(project, every):
         report.start_in_background(root)
-    return report.session_lines(project["name"])
+    return report.session_lines(project)
 
 
 def missing_tool_lines(root: Path) -> list[str]:
@@ -155,8 +151,14 @@ def render(cwd: Path, event: str) -> str:
             "`agent-init` to set how it works before any feature.\n"
         )
 
-    conn = db.connect()
-    project = db.ensure_project(conn, root)
+    import sqlite3
+
+    try:
+        conn = db.connect(timeout=0.5)
+        project = db.ensure_project(conn, root)
+    except sqlite3.OperationalError:
+        # busy on a first visit (readers never wait in WAL mode): say nothing rather than guess
+        return ""
     reg = db.registry(conn, project["id"])
     state = reg["state"] if reg else "unknown"
     facts = audit.audit(root)
@@ -187,7 +189,10 @@ def render(cwd: Path, event: str) -> str:
         out += ["", "Note: the project changed since it was adopted:", *audit.summary(facts),
                 "Mention it once to the owner if it affects the workflow."]
     if not reg or reg["audit_hash"] != new_hash:
-        db.set_registry(conn, project["id"], state, pieces=pieces or [], audit_hash=new_hash)
+        try:
+            db.set_registry(conn, project["id"], state, pieces=pieces or [], audit_hash=new_hash)
+        except sqlite3.OperationalError:
+            pass
     return "\n".join(out).rstrip() + "\n"
 
 

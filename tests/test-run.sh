@@ -45,6 +45,20 @@ grep -q "not recorded" "$WORK/err" && ok "it says the run was not recorded" || k
 eq "a failing test still fails while locked" "$code" "1"
 kill $LOCKER 2>/dev/null; wait $LOCKER 2>/dev/null; LOCKER=""
 
+PYT=""
+if python3 -c "import pytest" 2>/dev/null; then PYT="python3 -m pytest"
+elif command -v uv >/dev/null; then PYT="uv run -q --no-project --with pytest -- python -m pytest"; fi
+if [ -n "$PYT" ]; then
+  mkdir -p "$P/a" "$P/b"
+  printf 'def test_a1():\n    pass\n\ndef test_a2():\n    pass\n' > "$P/a/test_a.py"
+  printf 'def test_b():\n    assert False\n' > "$P/b/test_b.py"
+  before="$(q "SELECT COUNT(*) FROM results")"
+  (cd "$P" && "$REPO/bin/arp" test-run --tier unit -- sh -c "$PYT -q a; $PYT -q b") >/dev/null 2>&1
+  eq "two pytest calls in one command are both recorded" "$(( $(q "SELECT COUNT(*) FROM results") - before ))" "3"
+else
+  echo "  skip: pytest not installed"
+fi
+
 printf '\nrelease tiers and database names\n'
 grep -q '"verify.e2e_full", cfg\["verify"\]\["e2e_full"\], "e2e_full"' "$REPO/lib/agentcore/integrate.py" \
   && ok "release records the full e2e as e2e_full" || ko "release records the full e2e as e2e_full" "recorded as e2e"

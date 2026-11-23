@@ -94,13 +94,21 @@ def db_path() -> Path:
     return Path(os.environ.get("AGENT_CORE_DB", default))
 
 
-def connect() -> sqlite3.Connection:
+SCHEMA_VERSION = 2
+
+
+def connect(timeout: float = 10) -> sqlite3.Connection:
+    """WAL mode, so readers (the session hook) never wait for a writer (a test run)."""
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=10)
+    conn = sqlite3.connect(path, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA)
+    if conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.executescript(SCHEMA)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
     return conn
 
 
@@ -123,6 +131,9 @@ def ensure_project(conn: sqlite3.Connection, path: Path | str = ".") -> sqlite3.
     if found is None:
         return None
     key, name, root, remote = found
+    row = conn.execute("SELECT * FROM projects WHERE key = ?", (key,)).fetchone()
+    if row is not None and row["path"] == str(root):
+        return row
     conn.execute(
         "INSERT INTO projects (key, name, path, remote, created_at) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(key) DO UPDATE SET path = excluded.path",

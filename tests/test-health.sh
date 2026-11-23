@@ -90,10 +90,10 @@ eq "passes the exit code through" "$rc" "3"
 has "says when nothing was captured" "$out" "no per-test results"
 eq "the run is recorded with no results" "$(sql "select count(*) from runs where command='exit 3'")" "1"
 "$ARP" test-run --tier e2e --runner integrator -- sh -c 'echo $PYTEST_ADDOPTS > '"$WORK"'/addopts; echo $PLAYWRIGHT_JSON_OUTPUT_FILE > '"$WORK"'/pwenv' >/dev/null 2>&1
-has "sets PYTEST_ADDOPTS with --junitxml" "$(cat "$WORK/addopts")" "--junitxml="
+has "loads the per-process junit plugin through PYTEST_ADDOPTS" "$(cat "$WORK/addopts")" "-p arp_junit"
 has "sets PLAYWRIGHT_JSON_OUTPUT_FILE" "$(cat "$WORK/pwenv")" "playwright.json"
 # a command that writes the reports where the env says: proves capture end to end
-"$ARP" test-run --tier unit -- sh -c "cp $FIX/junit.xml \$(echo \$PYTEST_ADDOPTS | sed 's/.*--junitxml=//')" >/dev/null 2>&1
+"$ARP" test-run --tier unit -- sh -c "cp $FIX/junit.xml \$ARP_JUNIT_DIR/junit-1.xml" >/dev/null 2>&1
 eq "captures the junit file the command wrote" "$(sql "select count(*) from runs r join results x on x.run_id=r.id where r.command like 'sh -c%' ")" "4"
 "$ARP" test-run --tier e2e -- sh -c "cp $FIX/pw.json \$PLAYWRIGHT_JSON_OUTPUT_FILE" >/dev/null 2>&1
 eq "captures the playwright json the command wrote" "$(sql "select count(*) from runs r join results x on x.run_id=r.id where r.tier='e2e' and r.command like '%PLAYWRIGHT_JSON%'")" "4"
@@ -161,7 +161,7 @@ case "$html" in *"{{"*) ko "no placeholder left" "found {{" ;; *) ok "no placeho
 rm .arp/config.toml
 # without a testmon file the refresh is skipped, not an error
 P2="$(newrepo other)"; cd "$P2"; mkdir -p tests; touch tests/test_x.py; git add -A; git commit -qm t
-"$ARP" test-run --tier unit -- sh -c "cp $FIX/junit.xml \$(echo \$PYTEST_ADDOPTS | sed 's/.*--junitxml=//')" >/dev/null 2>&1
+"$ARP" test-run --tier unit -- sh -c "cp $FIX/junit.xml \$ARP_JUNIT_DIR/junit-1.xml" >/dev/null 2>&1
 out="$("$ARP" test-health --refresh-coverage 2>&1)"; rc=$?
 eq "missing .testmondata: exit 0" "$rc" "0"
 has "missing .testmondata: says so" "$out" "coverage skipped"

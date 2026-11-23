@@ -102,7 +102,7 @@ When testing finds a bug:
 | A UI detail | a structural fix, such as a component that cannot fail that way |
 | A broken flow | an e2e test |
 
-Every test run, from every project, is recorded in one local database, `~/.local/share/agent-core/agent-core.db`, where each row points to its project. `arp test-health` turns that history into a report covering cost, flaky tests, value, suspects, duplicates and the weekly trend. A suspect is a test that never fails while the code it covers keeps changing. Mutation testing decides whether to delete it, and you approve each deletion. Every 7 days (`tests.report_every_days`) a report page is written to `~/.local/share/agent-core/reports/<project>/`, and the next session tells you what changed. Nothing runs in the background between sessions.
+Every test run, from every project, is recorded in one local database, `~/.local/share/agent-core/agent-core.db`, where each row points to its project. `arp test-health` turns that history into a report covering cost, flaky tests, value, suspects, duplicates and the weekly trend. A suspect is a test that never fails while the code it covers keeps changing. Mutation testing decides whether to delete it, and you approve each deletion. Every 7 days (`tests.report_every_days`) a report page is written to `~/.local/share/agent-core/reports/<project>-<id>/`, and the next session tells you what changed. Nothing runs in the background between sessions.
 
 ## Commands
 

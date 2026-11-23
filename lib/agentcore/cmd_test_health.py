@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from agentcore import config, db
+from agentcore import config, db, gitwt
 
 HELP = "Report which tests earn their cost (--html for a page, --mutate to check one test)."
 
@@ -161,9 +161,15 @@ def prune(conn, projects) -> str:
         folded += cur.rowcount
         root = Path(p["path"])
         if root.is_dir():
+            trees = [w["path"] for w in gitwt.worktrees(root)] or [root]
+            refs = [r for r in (config.load_project(root).config["branches"].values() if config.load_project(root) else [])
+                    if isinstance(r, str) and "{" not in r]
             for t in conn.execute("SELECT id, file FROM tests WHERE project_id = ? AND deleted_at IS NULL", (p["id"],)):
-                if t["file"].endswith(".py") and not (root / t["file"]).exists():
-                    conn.execute("UPDATE tests SET deleted_at = ? WHERE id = ?", (db.now(), t["id"]))
+                if not t["file"].endswith(".py") or any((w / t["file"]).exists() for w in trees):
+                    continue
+                if any(gitwt.git(root, "cat-file", "-e", f"{ref}:{t['file']}").returncode == 0 for ref in refs):
+                    continue
+                conn.execute("UPDATE tests SET deleted_at = ? WHERE id = ?", (db.now(), t["id"]))
     conn.commit()
     return f"Pruned: {folded} result rows older than {RETENTION_DAYS} days folded into per-test totals."
 

@@ -76,11 +76,12 @@ def command_words(command: str) -> list[str]:
 
 def project_needs(root: Path, cfg: dict) -> list[Need]:
     needs: dict[str, Need] = {}
-    for section in ("verify", "env"):
-        for key, command in cfg.get(section, {}).items():
-            if isinstance(command, str):
-                for word in command_words(command):
-                    needs.setdefault(word, Need(word, f"{section}.{key}"))
+    commands = [("verify", k, v) for k, v in cfg.get("verify", {}).items()]
+    commands += [("env", k, cfg.get("env", {}).get(k)) for k in ("db_rebuild", "db_drop")]
+    for section, key, command in commands:
+        if isinstance(command, str) and command.strip() and command.strip() != "TODO":
+            for word in command_words(command):
+                needs.setdefault(word, Need(word, f"{section}.{key}"))
     ui = cfg.get("ui", {})
     if ui.get("base_url") or ui.get("node_root"):
         needs.setdefault("node", Need("node", "ui-check"))
