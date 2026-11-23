@@ -32,6 +32,8 @@ KNOWN: dict[str, dict] = {
     "go": {"pacman": "sudo pacman -S go", "apt": "sudo apt install golang", "dnf": "sudo dnf install golang",
            "brew": "brew install go"},
     "cargo": {"any": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"},
+    "jq": {"pacman": "sudo pacman -S jq", "apt": "sudo apt install jq", "dnf": "sudo dnf install jq",
+           "brew": "brew install jq"},
     "gh": {"pacman": "sudo pacman -S github-cli", "apt": "sudo apt install gh", "dnf": "sudo dnf install gh",
            "brew": "brew install gh"},
     "psql": {"pacman": "sudo pacman -S postgresql", "apt": "sudo apt install postgresql-client",
@@ -125,6 +127,8 @@ def check(root: Path | None, cfg: dict | None) -> list[Need]:
     missing = []
     if not shutil.which("git"):
         missing.append(Need("git", "agent-core"))
+    if not shutil.which("jq"):
+        missing.append(Need("jq", "agent-core: the quota notice and plan capture hooks stay off without it"))
     if sys.version_info < (3, 11):
         missing.append(Need("python3", f"agent-core needs Python 3.11+, found {platform.python_version()}"))
     if root is not None and cfg is not None:
