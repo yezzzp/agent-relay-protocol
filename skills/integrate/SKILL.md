@@ -18,7 +18,7 @@ root=$(git rev-parse --show-toplevel)
 git -C "$root" worktree add "$root-wt/<task>" -b <task> develop
 cd "$root-wt/<task>"
 ```
-- Use the test database `<db_prefix><task>`. Rebuild it with the `env.db_rebuild` command from `.arp/config.toml`.
+- Use the test database `arp worktrees new` printed (`<db_prefix><worktree folder>`). Rebuild it with the `env.db_rebuild` command from `.arp/config.toml`.
 - Use the first free ports from `env.web_port` and `env.api_port`.
 - Never use another session's database or ports.
 - Run `arp sessions` first. Above the soft limit, warn the owner once and continue if they want.

@@ -178,7 +178,7 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
             )
             return finish(report, 1)
         db = cfg["env"]["db_rebuild"]
-        name = cfg["env"]["db_prefix"] + gitwt.sanitize(integ)
+        name = gitwt.test_db(cfg, Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ)))
         plan = [
             ("db_rebuild", db.replace("{name}", name) if db else "", None),
             ("verify.full", cfg["verify"]["full"], "unit"),
@@ -244,7 +244,7 @@ def release(tag: str) -> int:
         report.step("merge", True, 0)
         plan = [
             ("verify.full", cfg["verify"]["full"], "unit"),
-            ("verify.e2e_full", cfg["verify"]["e2e_full"], "e2e"),
+            ("verify.e2e_full", cfg["verify"]["e2e_full"], "e2e_full"),
         ]
         if not run_steps(report, project, wt, plan, bool(cfg["tests"]["record"])):
             undo(wt, pre)

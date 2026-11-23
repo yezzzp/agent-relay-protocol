@@ -18,7 +18,13 @@ payload="$(cat)"
 LOG="$HOME/.claude/arp/relay.log"
 mkdir -p "$(dirname "$LOG")"
 
-CWD="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)"
+if command -v jq >/dev/null 2>&1; then
+  CWD="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null)"
+else
+  CWD="$(printf '%s' "$payload" | python3 -I -c 'import json,sys
+try: print(json.load(sys.stdin).get("cwd") or "")
+except Exception: pass' 2>/dev/null)"
+fi
 [ -n "$CWD" ] || CWD="$PWD"
 
 TASKS="$CWD/docs/ai/tasks"

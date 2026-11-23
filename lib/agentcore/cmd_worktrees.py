@@ -72,7 +72,7 @@ def new(project, main: Path, name: str) -> int:
     (path / ".arp" / "ports").write_text(f"web={web}\napi={api}\n")
     print(f"ports: web {web}, api {api}")
     if cfg["env"]["db_prefix"]:
-        db_name = cfg["env"]["db_prefix"] + gitwt.sanitize(path.name)
+        db_name = gitwt.test_db(cfg, path)
         print(f"test database: {db_name}")
         if cfg["env"]["db_rebuild"]:
             subprocess.run(cfg["env"]["db_rebuild"].replace("{name}", db_name), shell=True, cwd=str(path))
@@ -137,7 +137,7 @@ def run(args) -> int:
         gitwt.git(main, "branch", "-D", w["branch"])
         drop = cfg["env"]["db_drop"]
         if drop:
-            name = cfg["env"]["db_prefix"] + gitwt.sanitize(w["path"].name)
+            name = gitwt.test_db(cfg, w["path"])
             subprocess.run(drop.replace("{name}", name), shell=True, cwd=str(main))
     if not args.yes:
         print("dry run; pass --yes to remove")

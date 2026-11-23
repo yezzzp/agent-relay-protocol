@@ -41,10 +41,13 @@ def _inject_playwright(cmd: list[str] | str):
         if "--reporter" in cmd:
             return cmd
         return PW_RE.sub(r"\1 --reporter=list,json", cmd, count=1)
-    if "playwright" in " ".join(cmd) and "test" in cmd and not any(c.startswith("--reporter") for c in cmd):
+    if any(c.startswith("--reporter") for c in cmd):
+        return cmd
+    if "playwright" in " ".join(cmd) and "test" in cmd:
         i = cmd.index("test")
         return [*cmd[: i + 1], "--reporter=list,json", *cmd[i + 1 :]]
-    return cmd
+    # a whole shell line in one argument, as in `sh -c "cd web && playwright test"`
+    return [_inject_playwright(c) if PW_RE.search(c) else c for c in cmd]
 
 
 def run(args) -> int:
@@ -75,7 +78,10 @@ def run(args) -> int:
         code = 127
     elapsed = time.monotonic() - start
     if recording:
-        _record(project, args, command, junit, pw, elapsed)
+        try:
+            _record(project, args, command, junit, pw, elapsed)
+        except Exception as exc:  # recording is a side effect: it never changes the test result
+            print(f"arp test-run: results not recorded ({exc}); the tests' exit code stands.", file=sys.stderr)
     for f in tmp.glob("*"):
         f.unlink()
     tmp.rmdir()

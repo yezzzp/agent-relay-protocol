@@ -55,6 +55,11 @@ def expand(template: str, root: Path, **names) -> Path:
     return Path(template.format(root=str(root), **names))
 
 
+def test_db(cfg: dict, worktree: Path) -> str:
+    """The one place a worktree's test database name is built: prefix + folder name."""
+    return cfg["env"]["db_prefix"] + sanitize(Path(worktree).name)
+
+
 def sanitize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
