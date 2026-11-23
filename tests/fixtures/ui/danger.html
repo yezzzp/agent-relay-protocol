@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Pedidos</title></head>
+<body><main>
+<h1>Pedidos</h1>
+<script>const post = (p) => fetch(p, { method: "POST" });</script>
+<button aria-haspopup="menu" onclick="post('/api/eliminar')">Eliminar pedido</button>
+<button aria-expanded="false" onclick="post('/api/guardar')">Guardar</button>
+<button aria-haspopup="dialog" title="Delete order" onclick="post('/api/icon-delete')">🗑</button>
+<form method="post" action="/api/form-submit"><button aria-expanded="false">Opciones</button></form>
+<button aria-haspopup="menu" onclick="post('/api/menu-write')">Acciones</button>
+<button aria-haspopup="menu" aria-label="Assigned to">Assigned to</button>
+</main></body></html>

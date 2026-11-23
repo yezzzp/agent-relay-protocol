@@ -34,7 +34,7 @@ email_env = "QA_EMAIL"
 password_env = "QA_PASSWORD"
 ```
 
-Playwright is not installed by agent-core. If it is missing the script prints one line and exits 2: install it in the project, or set `ui.node_root`. Run against a dev server on the QA database, never production. It opens menus, comboboxes and dialogs but never clicks anything that sounds like saving, deleting, sending or paying.
+Playwright is not installed by agent-core. If it is missing the script prints one line and exits 2: install it in the project, or set `ui.node_root`. Run against a dev server on the QA database, never production. It opens menus, comboboxes and dialogs. It skips controls whose label, title or value says save, delete, send, pay and the like (English, Spanish, Portuguese, plus `ui.skip_words`), and buttons that would submit a form. After login it blocks every request that is not GET, HEAD or OPTIONS, so it cannot write even if a harmless-looking control does. A blocked request is a `blocked-write` warning; if it is really a read (GraphQL, a search that uses POST), add its URL pattern to `ui.allow_write`. A view that lands on the login page is a `redirected-to-login` error, and a failed login stops the run.
 
 ## Read the result
 
@@ -60,10 +60,10 @@ A UI detail is fixed **structurally, in the shared component**, so every screen 
 
 ## Finish
 
-Re-run until no errors. Keep the first and last `ui-check.json`, and build the page for the owner:
+Run the first pass with `--out .arp/ui-check/before` and the last with `--out .arp/ui-check/after`, so the screenshots of each pass stay next to their JSON. Re-run until no errors, then build the page for the owner:
 
 ```
-node ${CLAUDE_PLUGIN_ROOT}/scripts/report.mjs after/ui-check.json --before before/ui-check.json --after after/ui-check.json [--questions questions.json] --out ui-report.html
+cd .arp/ui-check && node ${CLAUDE_PLUGIN_ROOT}/scripts/report.mjs after/ui-check.json --before before/ui-check.json --after after/ui-check.json [--questions questions.json] --out ui-report.html
 ```
 
 Publish that HTML as an artifact. Then, if the screen carries business rules, use the `explore` skill.

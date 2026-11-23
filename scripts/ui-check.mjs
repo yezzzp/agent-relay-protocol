@@ -6,7 +6,7 @@ import path from "node:path";
 import { list, loadPlaywright, loadUi, login, parseArgs, parseSize, resolveUrl } from "./lib/common.mjs";
 import { domChecks } from "./lib/page-checks.mjs";
 
-const args = parseArgs(process.argv.slice(2), ["tabs", "only-failures", "help"]);
+const args = parseArgs(process.argv.slice(2), ["tabs", "only-failures", "help", "no-login"]);
 if (args.help || (!args.url && !args._.length)) {
   console.error(`usage: ui-check.mjs --url <url|path> [--url ...] [--tabs] [--only-failures]
   [--project dir] [--node-root dir] [--base-url u] [--viewports 1440x900,390x844] [--themes light,dark]
@@ -24,7 +24,20 @@ const urls = list(args.url ?? args._).map((u) => resolveUrl(u, base));
 const out = path.resolve(project, String(args.out ?? cfg.out ?? ".arp/ui-check"));
 mkdirSync(out, { recursive: true });
 const maxLayers = Number(cfg.max_layers ?? 40);
-const skip = new RegExp("delete|remove|void|archive|deactivate|sign out|log out|logout|confirm|save|pay|charge|send|submit|publish|approve|sign" + (cfg.skip_words ? "|" + [].concat(cfg.skip_words).join("|") : ""), "i");
+// Words that stop a control from being opened, matched as whole words in English, Spanish and Portuguese.
+// The real guarantee is below: after login every request that is not GET, HEAD or OPTIONS is blocked.
+const SKIP_WORDS = [
+  "delete", "remove", "void", "archive", "deactivate", "sign out", "log out", "logout", "confirm", "save", "pay",
+  "charge", "send", "submit", "publish", "approve", "sign", "cancel order", "refund",
+  "eliminar", "borrar", "quitar", "anular", "archivar", "desactivar", "cerrar sesión", "salir", "confirmar",
+  "guardar", "pagar", "cobrar", "enviar", "publicar", "aprobar", "firmar", "emitir", "registrar", "devolver",
+  "excluir", "apagar", "remover", "sair", "salvar", "enviar", "assinar",
+  ...[].concat(cfg.skip_words ?? []),
+];
+const escape = (w) => String(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const skip = new RegExp(`(?<![\\p{L}\\p{N}])(?:${SKIP_WORDS.map(escape).join("|")})(?![\\p{L}\\p{N}])`, "iu");
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const allowWrite = [].concat(cfg.allow_write ?? []).map((p) => new RegExp(p));
 const LAYERS = '[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [popover]:popover-open';
 const TRIGGERS = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [role="combobox"]';
 const TABS = cfg.tab_selector ?? '[role="tab"]';
@@ -42,13 +55,24 @@ for (const vp of viewports) {
       await ctx.addInitScript(([k, t]) => { try { localStorage.setItem(k, t); } catch {} }, [cfg.theme_storage_key, theme]);
     const page = await ctx.newPage();
     page.setDefaultTimeout(5000);
+    page.setDefaultNavigationTimeout(Number(cfg.nav_timeout_ms ?? 60000));
     const noise = [];
-    page.on("console", (m) => m.type() === "error" && noise.push({ check: "console-error", text: m.text().slice(0, 300) }));
-    page.on("pageerror", (e) => noise.push({ check: "console-error", text: String(e.message).slice(0, 300) }));
-    page.on("response", (r) => r.status() >= 400 && !/favicon/.test(r.url()) && noise.push({ check: "failed-request", text: `${r.status()} ${r.request().method()} ${r.url()}` }));
-    page.on("requestfailed", (r) => !/favicon/.test(r.url()) && !/ERR_ABORTED/.test(r.failure()?.errorText ?? "") && noise.push({ check: "failed-request", text: `${r.failure()?.errorText} ${r.method()} ${r.url()}` }));
+    let here = null; // the view being checked, so each error is filed under the view that caused it
+    const push = (n) => noise.push({ ...n, view: here });
+    page.on("console", (m) => m.type() === "error" && push({ check: "console-error", text: m.text().slice(0, 300) }));
+    page.on("pageerror", (e) => push({ check: "console-error", text: String(e.message).slice(0, 300) }));
+    page.on("response", (r) => r.status() >= 400 && !/favicon/.test(r.url()) && push({ check: "failed-request", text: `${r.status()} ${r.request().method()} ${r.url()}` }));
+    page.on("requestfailed", (r) => !/favicon/.test(r.url()) && !/ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/.test(r.failure()?.errorText ?? "") && push({ check: "failed-request", text: `${r.failure()?.errorText} ${r.method()} ${r.url()}` }));
     if (!args["no-login"]) await login(page, cfg.login, base);
     noise.length = 0;
+    const blocked = new Set();
+    await ctx.route("**/*", (route) => {
+      const req = route.request();
+      if (SAFE_METHODS.has(req.method()) || allowWrite.some((re) => re.test(req.url()))) return route.continue();
+      blocked.add(`${req.method()} ${req.url().replace(/\?.*$/, "")}`);
+      return route.abort("blockedbyclient");
+    });
+    const loginPath = cfg.login?.url ? new URL(resolveUrl(cfg.login.url, base)).pathname : null;
 
     const opts = (rootSelector) => ({ rootSelector, theme, chatSelector: cfg.chat_selector, panelSelector: cfg.panel_selector, chatMessageSelector: cfg.chat_message_selector, allowNative: cfg.allow_native });
     const record = (view, shot, items) => {
@@ -80,9 +104,14 @@ for (const vp of viewports) {
       for (let i = 0; i < total; i++) {
         try {
           const t = triggers.nth(i);
-          const text = ((await t.getAttribute("aria-label")) || (await t.innerText().catch(() => "")) || "").trim().replace(/\s+/g, " ").slice(0, 50);
-          const key = text || `trigger ${i + 1}`;
-          if (seen.has(key) || skip.test(key)) continue;
+          const said = await t.evaluate((el) => [el.getAttribute("aria-label"), el.getAttribute("title"), el.innerText, el.value, el.getAttribute("data-testid")].filter(Boolean).join(" ").trim().replace(/\s+/g, " "));
+          const submits = await t.evaluate((el) => {
+            const form = el.closest("form");
+            if (el.matches('input[type="submit"], input[type="image"]')) return true;
+            return !!form && el.tagName === "BUTTON" && (el.getAttribute("type") ?? "submit").toLowerCase() === "submit";
+          });
+          const key = said.slice(0, 50) || `trigger ${i + 1}`;
+          if (seen.has(key) || skip.test(said) || submits) continue;
           if (await t.evaluate((el) => !!el.closest("nav, aside, [role='navigation']") && !el.closest("main"))) continue;
           seen.add(key);
           await closeLayers();
@@ -110,9 +139,19 @@ for (const vp of viewports) {
     }
 
     for (const url of urls) {
-      await page.goto(url, { waitUntil: "networkidle" });
-      await page.waitForTimeout(300);
       const name = url.replace(/^https?:\/\/[^/]+/, "") || "/";
+      here = name;
+      try {
+        await page.goto(url, { waitUntil: "networkidle" });
+      } catch (e) {
+        findings.push({ severity: "error", check: "load-failed", view: name, theme, viewport: vp, selector: "", text: String(e.message).split("\n")[0], screenshot: "" });
+        continue;
+      }
+      await page.waitForTimeout(300);
+      if (loginPath && new URL(page.url()).pathname === loginPath && new URL(url).pathname !== loginPath) {
+        findings.push({ severity: "error", check: "redirected-to-login", view: name, theme, viewport: vp, selector: "", text: `${name} sent the browser to the login page: the login failed or this role cannot open it`, screenshot: "" });
+        continue;
+      }
       await checkView(name, url);
       if (args.tabs) {
         const labels = [];
@@ -128,15 +167,17 @@ for (const vp of viewports) {
             await page.locator(TABS).filter({ visible: true, hasText: label }).first().click();
             await page.waitForLoadState("networkidle");
             await page.waitForTimeout(300);
-            await checkView(`${name} [tab: ${label}]`, url);
+            here = `${name} [tab: ${label}]`;
+            await checkView(here, url);
           } catch (e) {
             findings.push({ severity: "warning", check: "could-not-check", view: `${name} [tab: ${label}]`, theme, viewport: vp, selector: "", text: String(e.message).split("\n")[0], screenshot: "" });
           }
         }
       }
     }
-    const last = views.filter((v) => v.theme === theme && v.viewport === vp).pop();
-    for (const n of noise) findings.push({ severity: "error", check: n.check, view: last?.name ?? "", theme, viewport: vp, selector: "", text: n.text, screenshot: last?.screenshot ?? "" });
+    const shotOf = (name) => views.find((v) => v.theme === theme && v.viewport === vp && v.name === name)?.screenshot ?? "";
+    for (const n of noise) findings.push({ severity: "error", check: n.check, view: n.view ?? "", theme, viewport: vp, selector: "", text: n.text, screenshot: shotOf(n.view) });
+    for (const b of blocked) findings.push({ severity: "warning", check: "blocked-write", view: "", theme, viewport: vp, selector: "", text: `${b} was blocked: ui-check never writes. If it is a read (GraphQL, search), add it to ui.allow_write`, screenshot: "" });
     await ctx.close();
   }
 }

@@ -28,7 +28,15 @@ suspect_runs = 10     # covered code changed this many times and the test never 
 e2e_per_flow = 3      # the guard fails above this
 
 [ui]
-url       = "{{UI_URL}}"           # empty when the project has no web UI
-login     = ""                     # command or script that logs in, if needed
+base_url  = "{{UI_URL}}"           # the dev server on the QA database; empty when the project has no web UI
 viewports = ["1440x900", "390x844"]
 themes    = ["light", "dark"]
+# allow_write = ["/graphql"]       # ui-check blocks every non-GET request; list reads that use POST
+
+# [ui.login]                       # uncomment when the app needs a login
+# url = "/login"
+# email_env = "QA_EMAIL"
+# password_env = "QA_PASSWORD"
+# email_selector = "label:Email"   # CSS, or label:<text>, or button:<name>
+# password_selector = "label:Password"
+# submit_selector = "button:Sign in"

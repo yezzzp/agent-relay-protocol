@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Entrar</title></head>
+<body><main><h1>Entrar</h1>
+<label>Usuario <input id="u"></label><label>Contraseña <input id="p" type="password"></label>
+<button id="go" type="button">Entrar</button>
+<script>
+document.getElementById("go").onclick = () => {
+  if (document.getElementById("p").value === "good") { localStorage.token = "1"; location = "/private.html"; }
+};
+</script></main></body></html>

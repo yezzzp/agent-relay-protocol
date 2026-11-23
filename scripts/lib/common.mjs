@@ -64,7 +64,10 @@ export function parseToml(text) {
     const h = /^\[([^\[\]]+)\]$/.exec(line);
     if (h) {
       table = root;
-      for (const part of h[1].split(".").map((s) => s.trim())) table = table[part] ??= {};
+      for (const part of h[1].split(".").map((s) => s.trim())) {
+        if (typeof table[part] !== "object" || table[part] === null || Array.isArray(table[part])) table[part] = {};
+        table = table[part];
+      }
       continue;
     }
     const eq = line.indexOf("=");
@@ -81,7 +84,10 @@ export function parseToml(text) {
 export function loadUi(projectRoot) {
   const file = path.join(projectRoot, ".arp", "config.toml");
   if (!existsSync(file)) return {};
-  try { return parseToml(readFileSync(file, "utf8")).ui ?? {}; } catch { return {}; }
+  try { return parseToml(readFileSync(file, "utf8")).ui ?? {}; } catch (e) {
+    console.error(`ui-check: cannot read ${file}: ${e.message}`);
+    process.exit(2);
+  }
 }
 
 // Playwright is a dependency of the project being checked, never of agent-core.
@@ -141,7 +147,10 @@ export async function login(page, cfg, base) {
   }
   if (submit) await submit.click();
   else await pw.press("Enter");
+  const loginPath = new URL(resolveUrl(l.url, base)).pathname;
   const here = page.url();
   await page.waitForURL((u) => u.href !== here, { waitUntil: "commit", timeout: 15000 }).catch(() => {});
   await page.waitForLoadState("networkidle").catch(() => {});
+  const still = new URL(page.url()).pathname === loginPath && (await pw.isVisible().catch(() => false));
+  if (still) throw new Error(`login failed: still on ${l.url} after submitting. Check ${l.email_env} and ${l.password_env}`);
 }
