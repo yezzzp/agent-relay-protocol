@@ -110,11 +110,27 @@ def playwright_missing(root: Path, cfg: dict) -> Need | None:
                 project_step=True)
 
 
-def deps_missing(root: Path) -> list[Need]:
+def used_folders(root: Path, cfg: dict | None) -> list[Path]:
+    """The root plus every folder the project's commands `cd` into. Without a config, the usual ones."""
+    if not cfg:
+        return [root, root / "web", root / "frontend", root / "mobile"]
+    commands = [v for v in cfg.get("verify", {}).values() if isinstance(v, str)]
+    commands += [cfg.get("env", {}).get(k) or "" for k in ("db_rebuild", "db_drop")]
+    commands += [c for c in cfg.get("integrate", {}).get("after", []) or [] if isinstance(c, str)]
+    found = [root]
+    for command in commands:
+        for name in re.findall(r"(?:^|&&|;|\()\s*cd\s+([\w./-]+)", command):
+            folder = (root / name).resolve()
+            if folder.is_dir() and folder not in found and root.resolve() in folder.parents:
+                found.append(folder)
+    return found
+
+
+def deps_missing(root: Path, cfg: dict | None = None) -> list[Need]:
     out = []
     if (root / "uv.lock").exists() and not (root / ".venv").is_dir():
         out.append(Need("project python deps", ".venv missing", f"cd {root} && uv sync", project_step=True))
-    for folder in [root, root / "web", root / "frontend", root / "mobile"]:
+    for folder in used_folders(root, cfg):
         if (folder / "package.json").exists() and not (folder / "node_modules").is_dir():
             pm = "pnpm install" if (folder / "pnpm-lock.yaml").exists() else "npm ci"
             out.append(Need(f"node deps in {folder.name or '.'}", "node_modules missing", f"cd {folder} && {pm}",
@@ -137,7 +153,7 @@ def check(root: Path | None, cfg: dict | None) -> list[Need]:
                 missing.append(need)
         if extra := playwright_missing(root, cfg):
             missing.append(extra)
-        missing += deps_missing(root)
+        missing += deps_missing(root, cfg)
     for need in missing:
         if not need.install:
             need.install = install_hint(need.tool)

@@ -42,6 +42,11 @@ hook="$(printf '{"cwd":"%s"}' "$P" | PATH="$BIN" "$REPO/bin/arp" session-start)"
 has "the session is told what is missing" "$hook" "## Missing on this machine"
 out="$(cd "$REPO" && "$REPO/bin/arp" tools)"
 has "agent-core alone needs nothing more" "$out" "nothing missing"
+mkdir -p "$P/web" "$P/mobile"; echo '{}' > "$P/web/package.json"; echo '{}' > "$P/mobile/package.json"
+out="$(cd "$P" && PATH="$BIN" "$REPO/bin/arp" tools)"
+has "node deps of a folder a command enters are listed" "$out" "node deps in web"
+hasnt "a folder no command uses is not" "$out" "node deps in mobile"
+rm -rf "$P/web" "$P/mobile"
 
 printf '\nworktrees new\n'
 mkdir -p "$P-wt"; g -C "$P" worktree add -q "$P-wt/develop" develop
