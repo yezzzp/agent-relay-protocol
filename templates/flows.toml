@@ -1,5 +1,7 @@
 # The main user flows of the project (5 to 20), one sentence each.
-# Each end-to-end test names one with `@flow <id>`. Tracked in git.
+# Each end-to-end test names one with `@flow <id>`. A test of a flow with
+# critical = true also carries `@critical`: the integrator runs only those.
+# Tracked in git.
 #
 # [checkout]
 # says     = "A customer fills a cart, pays and gets a receipt."

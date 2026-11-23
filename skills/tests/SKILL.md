@@ -18,7 +18,7 @@ If you cannot fill it in, do not write the test.
 | 2 | Does it **compute or decide** something? (money, stock, permissions, state changes, dates) | **Unit test, TDD.** |
 | 3 | Does it depend on **two actors, time or retries**? (concurrency, idempotency, queues) | **Unit test against the real database, TDD.** Never e2e. |
 | 4 | Is it about **how it looks**? | **`ui-check`.** No test. |
-| 5 | Does it break a **whole user flow** listed in `.arp/flows.toml`? | **e2e tagged `@flow <id>`.** Extend that flow's test before adding one. |
+| 5 | Does it break a **whole user flow** listed in `.arp/flows.toml`? | **e2e tagged `@flow <id>`**, plus `@critical` when that flow has `critical = true` (the integrator runs only `@critical`). Extend that flow's test before adding one. |
 | 6 | None of the above. | **No test.** A break shows on the first click. |
 
 ## TDD

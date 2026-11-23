@@ -16,6 +16,8 @@
 #   ./install.sh                       interactive selector
 #   ./install.sh --agents claude,codex non-interactive
 #   ./install.sh --all --yes           everything detected, no questions
+#   ./install.sh --keep                the agents chosen last time, no questions (used by arp update)
+#   ./install.sh --graphify            also install Graphify without asking
 #   ./install.sh --uninstall           remove the links
 
 set -euo pipefail
@@ -35,7 +37,7 @@ TARGET_DESC=("statusline + plugin" "$CODEX_SKILLS")
 TARGET_BIN=(claude codex)
 
 STATES=() ; AVAIL=() ; CUR=0
-ASSUME_YES=0 ; PICK_ALL=0 ; UNINSTALL=0 ; PRESELECT=""
+ASSUME_YES=0 ; PICK_ALL=0 ; UNINSTALL=0 ; PRESELECT="" ; KEEP_TARGETS=0 ; WANT_GRAPHIFY=0
 
 C_DIM=$'\033[2m' ; C_OK=$'\033[32m' ; C_WARN=$'\033[33m'
 C_ERR=$'\033[31m' ; C_BOLD=$'\033[1m' ; C_OFF=$'\033[0m'
@@ -54,7 +56,8 @@ remove_repo_links() {
   [ -d "$dir" ] || return 0
   for link in "$dir"/*; do
     [ -L "$link" ] || continue
-    if [[ "$(readlink "$link")" == "$REPO_DIR"* ]]; then
+    local target; target="$(readlink "$link")"
+    if [ "$target" = "$REPO_DIR" ] || [[ "$target" == "$REPO_DIR/"* ]]; then
       rm -f "${link:?}"; ok "$label: removed $(basename "$link")"
     fi
   done
@@ -67,6 +70,8 @@ while [ $# -gt 0 ]; do
     --agents=*)  PRESELECT="${1#*=}"; shift ;;
     --all)       PICK_ALL=1; shift ;;
     -y|--yes)    ASSUME_YES=1; shift ;;
+    --keep)      KEEP_TARGETS=1; ASSUME_YES=1; shift ;;
+    --graphify)  WANT_GRAPHIFY=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help)   usage ;;
     *)           err "Unknown option: $1"; usage ;;
@@ -180,6 +185,9 @@ tui_select() {
   printf '\n\n'
 }
 
+if [ -z "$PRESELECT" ] && [ "$KEEP_TARGETS" -eq 1 ] && [ -s "$HOME/.claude/arp/targets" ]; then
+  PRESELECT="$(paste -sd, "$HOME/.claude/arp/targets")"
+fi
 if [ -n "$PRESELECT" ]; then
   apply_preselect
 elif [ "$PICK_ALL" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; then
@@ -203,9 +211,18 @@ chmod +x "$REPO_DIR/bin/agent-init" "$REPO_DIR/bin/arp" "$REPO_DIR/bin/arp-hooks
          "$REPO_DIR/hooks/"*.sh "$REPO_DIR/statusline/"*.sh "$REPO_DIR/install.sh"
 mkdir -p "$BIN_DIR"
 for c in agent-init arp arp-hooks; do
-  ln -sfn "$REPO_DIR/bin/$c" "$BIN_DIR/$c"
-  ok "$c → $BIN_DIR/$c"
+  dest="$BIN_DIR/$c"
+  if [ -e "$dest" ] && ! { [ -L "$dest" ] && [[ "$(readlink "$dest")" == "$REPO_DIR/"* ]]; }; then
+    warn "$dest already exists and is not ours: left as it is. Remove it, then run the installer again."
+    continue
+  fi
+  ln -sfn "$REPO_DIR/bin/$c" "$dest"
+  ok "$c → $dest"
 done
+other_arp="$(PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$BIN_DIR" | paste -sd:)" command -v arp 2>/dev/null || true)"
+if [ -n "$other_arp" ]; then
+  warn "another arp exists at $other_arp (net-tools). $BIN_DIR/arp comes first in PATH; call that one by its full path."
+fi
 
 # Claude Code gets its skills from the plugin now. The links this repo used to
 # make in ~/.claude/skills (commit, relay, resume) would load every skill twice.
@@ -268,8 +285,8 @@ if command -v graphify >/dev/null 2>&1; then
 elif [ "$HAS_UV" -eq 0 ]; then
   warn "skipped: uv is missing. Install it and then: uv tool install graphifyy"
 else
-  DO_IT=$ASSUME_YES
-  if [ "$DO_IT" -eq 0 ] && [ -t 0 ] && [ -r /dev/tty ]; then
+  DO_IT=$WANT_GRAPHIFY
+  if [ "$DO_IT" -eq 0 ] && [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ] && [ -r /dev/tty ]; then
     printf '  Install Graphify with uv? [y/N] '
     read -r ans < /dev/tty || ans=""
     if [[ "$ans" =~ ^[yY]$ ]]; then DO_IT=1; fi

@@ -22,7 +22,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
-ACTION="${1:-status}" ; THRESHOLD=80
+ACTION="${1:-status}" ; THRESHOLD=""
 shift || true
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -93,7 +93,7 @@ if action == "status":
         n = count_ours(ev)
         state = f"legacy entry in settings ({n}): run arp-hooks install to remove it" if n else "from the plugin"
         print(f"  {ev:<16}: {state}  (others: {count_others(ev)})")
-    print(f"  threshold       : {cfg.get('env', {}).get('ARP_QUOTA_THRESHOLD', os.environ.get('ARP_QUOTA_THRESHOLD', thr))}%")
+    print(f"  threshold       : {cfg.get('env', {}).get('ARP_QUOTA_THRESHOLD', os.environ.get('ARP_QUOTA_THRESHOLD', thr or '80'))}%")
     sys.exit(0)
 
 # Backup before any write.
@@ -118,8 +118,11 @@ if action == "install":
             print(f"  ✓ {ev}: removed {n} legacy entry(ies) — the plugin provides it now")
 
     env = cfg.setdefault("env", {})
-    env["ARP_QUOTA_THRESHOLD"] = str(thr)
-    print(f"  ✓ threshold {thr}%")
+    if thr:
+        env["ARP_QUOTA_THRESHOLD"] = str(thr)
+    else:
+        env.setdefault("ARP_QUOTA_THRESHOLD", "80")
+    print(f"  ✓ threshold {env['ARP_QUOTA_THRESHOLD']}%")
 
 elif action == "uninstall":
     if cfg.get("statusLine", {}).get("command", "").startswith(repo):
@@ -133,10 +136,14 @@ elif action == "uninstall":
 else:
     sys.exit(f"Unknown action: {action}")
 
-tmp = path + ".arp-tmp"
+# Write through a symlink (dotfiles): replace the file it points to, never the link.
+real = os.path.realpath(path)
+tmp = real + ".arp-tmp"
 with open(tmp, "w") as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
     f.write("\n")
-os.replace(tmp, path)
-print(f"  → {path}")
+if os.path.exists(real):
+    shutil.copymode(real, tmp)
+os.replace(tmp, real)
+print(f"  → {path}" + (f" (link to {real})" if real != os.path.abspath(path) else ""))
 PY

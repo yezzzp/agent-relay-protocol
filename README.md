@@ -89,7 +89,7 @@ One session per round of work, closed once that round is integrated.
 | Tier | Runs | Contains |
 |---|---|---|
 | Unit | every change | business rules, written test-first (red, green, refactor) |
-| Critical e2e | every integration | one test per main user flow, tagged `@critical` |
+| Critical e2e | every integration | one test per critical flow, tagged `@flow <id>` and `@critical` |
 | Full e2e | before a release | everything |
 
 Before writing a test, the agent picks the tier with a six-step decision guide, with generic patterns, after the project's own rules. It writes its choice down first (`tier: unit (rule 2) · covers S3`). A guard fails `verify.quick` when an e2e test names no flow from `.arp/flows.toml`, or when a flow goes over its cap.

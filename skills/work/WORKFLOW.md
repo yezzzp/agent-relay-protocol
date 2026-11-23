@@ -42,7 +42,7 @@ Use the `tests` skill. Before any test, write one line: `tier: … (rule N) · c
 2. Does it compute or decide something (money, stock, permissions, states)? Unit test with TDD: write it, **see it fail**, then the code.
 3. Does it depend on two actors, time or retries? Unit test against the real database, with TDD. Never e2e.
 4. Is it how it looks? `ui-check`. No test.
-5. Does it break a whole user flow from `.arp/flows.toml`? An e2e test tagged `@flow <id>`. Extend that flow's test first.
+5. Does it break a whole user flow from `.arp/flows.toml`? An e2e test tagged `@flow <id>`, and `@critical` too if the flow is `critical = true`. Extend that flow's test first.
 6. None of the above: no test.
 
 In a worktree, `verify.quick` runs only the tests that touch what you changed. The integrator runs every test (`verify.full`) and the critical e2e on the integration branch; a release runs every e2e. Never run the full suite in a worktree unless the owner asks.

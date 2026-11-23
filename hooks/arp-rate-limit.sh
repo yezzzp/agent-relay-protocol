@@ -37,6 +37,9 @@ for f in "$TASKS"/*.md; do
   [ -e "$f" ] || continue
   case "$(basename "$f")" in _TEMPLATE.md) continue ;; esac
   grep -qE '^status:[[:space:]]*IN_PROGRESS' "$f" || continue
+  # Only this agent's own tasks: a task another agent owns is not ours to hand off.
+  owner="$(awk 'NR==1 && $0=="---" {fm=1; next} fm && $0=="---" {exit} fm && /^owner:/ {sub(/^owner:[[:space:]]*/, ""); print; exit}' "$f")"
+  case "$owner" in claude|none|"") ;; *) continue ;; esac
 
   # Only inside the frontmatter (between the first pair of ---), never in the body.
   awk -v now="$NOW" '
@@ -117,7 +120,10 @@ EOF
   printf 'Latest commits:\n\n```\n'
   git -C "$CWD" log --oneline -10 2>/dev/null || true
   printf '```\n'
-} > "$TARGET.arp-tmp" && mv "$TARGET.arp-tmp" "$TARGET"
+} > "$TARGET.arp-tmp" && mv "$TARGET.arp-tmp" "$TARGET" || {
+  printf '%s quota cut — could not write %s; the draft is kept\n' "$NOW" "$TARGET" >> "$LOG"
+  exit 0
+}
 
 # The draft is consumed: it is a task file now. Otherwise a second cut on the
 # same task would promote it again and leave a duplicate.

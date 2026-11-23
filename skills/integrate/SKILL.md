@@ -14,14 +14,11 @@ description: Branch model and integration for agent-core projects. Start every c
 
 ## Start
 ```bash
-root=$(git rev-parse --show-toplevel)
-git -C "$root" worktree add "$root-wt/<task>" -b <task> develop
-cd "$root-wt/<task>"
+arp sessions                       # above the soft limit, warn the owner once; continue if they want
+arp worktrees new <area>/<task>    # e.g. web/orders-filter
+cd "$(git rev-parse --show-toplevel)-wt/<area>-<task>"
 ```
-- Use the test database `arp worktrees new` printed (`<db_prefix><worktree folder>`). Rebuild it with the `env.db_rebuild` command from `.arp/config.toml`.
-- Use the first free ports from `env.web_port` and `env.api_port`.
-- Never use another session's database or ports.
-- Run `arp sessions` first. Above the soft limit, warn the owner once and continue if they want.
+`arp worktrees new` branches from the integration branch and copies `.env` and the test map. It prints the worktree's own test database and ports, which are also in `.arp/ports`. Rebuild that database with `env.db_rebuild`. Never use another session's database or ports.
 
 ## Finish
 1. The quick verify command passes, and the worktree is clean (everything committed).

@@ -56,7 +56,7 @@ shopt -u patsub_replacement 2>/dev/null || true
 inject_block() {
   local file="$1" block="$2"
   if [ "$DRY" -eq 1 ]; then
-    if [ -f "$file" ] && grep -q 'ARP:BEGIN' "$file"; then
+    if [ -f "$file" ] && grep -qE '^[[:space:]]*(<!--|#)[[:space:]]*ARP:BEGIN' "$file"; then
       printf '  %s(dry) would update the block in %s%s\n' "$C_DIM" "$file" "$C_OFF"
     else
       printf '  %s(dry) would inject the block in %s%s\n' "$C_DIM" "$file" "$C_OFF"
@@ -165,7 +165,7 @@ for pw in . web frontend; do
   if ls "$PROJECT_DIR/$pw"/playwright.config.* >/dev/null 2>&1; then
     case "$PM" in pnpm) X="pnpm exec" ;; npm) X="npx" ;; *) X="npx" ;; esac
     pre=""; [ "$pw" = "." ] || pre="cd $pw && "
-    V_E2E="${pre}$X playwright test --grep @critical"
+    V_E2E="${pre}$X playwright test --grep @critical --pass-with-no-tests"
     V_E2E_FULL="${pre}$X playwright test"
     break
   fi

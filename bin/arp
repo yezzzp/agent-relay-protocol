@@ -75,7 +75,7 @@ case "${1:-}" in
       ok "already up to date"
     else
       ok "updated: $(git -C "$ARP_HOME" log --oneline "$before..$after" | wc -l) commit(s)"
-      "$ARP_HOME/install.sh" --all --yes
+      "$ARP_HOME/install.sh" --keep
     fi
     printf '%sIn Claude Code, also run: claude plugin update agent-core@agent-core%s\n' "$C_DIM" "$C_OFF"
     ;;
