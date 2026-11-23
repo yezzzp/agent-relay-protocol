@@ -269,6 +269,8 @@ if python3 -c 'import tomllib,sys; [tomllib.load(open(f,"rb")) for f in sys.argv
      "$p/.arp/config.toml" "$p/.arp/flows.toml" 2>/dev/null; then ok "both files are valid TOML"
 else ko "both files are valid TOML" "tomllib failed"; fi
 has "gitignore keeps config.toml tracked" "$(cat "$p/.gitignore")" "!.arp/config.toml"
+has "gitignore keeps the test-guard baseline tracked" "$(cat "$p/.gitignore")" "!.arp/test-guard-baseline.json"
+has "config.toml offers integrate.after, commented" "$(cat "$p/.arp/config.toml")" "# after = [\"git push origin develop\"]"
 has "AGENTS.md has the working charter section" "$(cat "$p/AGENTS.md")" "## Working charter"
 
 echo 'quick = "mine"' > "$p/.arp/config.toml"

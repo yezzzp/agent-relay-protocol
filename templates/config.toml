@@ -18,6 +18,9 @@ copy       = [{{COPY}}]          # copied from the integration worktree into eac
 integration = "{{BRANCH_INTEGRATION}}"
 production  = "{{BRANCH_PRODUCTION}}"
 
+[integrate]
+# after = ["git push origin {{BRANCH_INTEGRATION}}"]   # run in the integration worktree once a branch lands; a failure is reported, the merge stays
+
 [sessions]
 soft_limit = 3        # warn above this; never block
 idle_hours = 6        # waiting on the owner longer than this: offer relay and close

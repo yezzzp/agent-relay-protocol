@@ -4,4 +4,5 @@ graphify-out/
 .arp/*
 !.arp/config.toml
 !.arp/flows.toml
+!.arp/test-guard-baseline.json
 # ARP:END

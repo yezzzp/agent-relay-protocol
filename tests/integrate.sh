@@ -167,6 +167,24 @@ out="$(cd "$r2" && "$ARP" integrate feat-n 2>&1)"; rc=$?
 eq "no verify.full: integrate refuses" "$rc" "1"
 has "and says what is missing" "$out" "verify.full"
 
+group "after a landed integration"
+ra="$(newrepo after true)"
+printf '[integrate]\nafter = ["echo landed-hook > %s/after.log", "false"]\n' "$WORK" >> "$ra/.arp/config.toml"
+git -C "$ra" commit -qam "after hooks" && git -C "$ra" branch -f develop
+feature "$ra" feat-h h.txt "h"
+out="$(cd "$ra" && "$ARP" integrate feat-h 2>&1)"; rc=$?
+eq "a failing after step does not fail the landed integration" "$rc" "0"
+[ -f "$ra-wt/develop/h.txt" ] && ok "and the merge stays" || ko "and the merge stays" "undone"
+has "the after step ran in the integration worktree" "$(cat "$WORK/after.log" 2>/dev/null)" "landed-hook"
+has "the report shows the failed after step" "$(cat "$ra"/.arp/integration/*feat-h.md)" "after: false"
+rm -f "$WORK/after.log"
+rb="$(newrepo after-bad false)"
+printf '[integrate]\nafter = ["echo should-not > %s/after.log"]\n' "$WORK" >> "$rb/.arp/config.toml"
+git -C "$rb" commit -qam "after hooks" && git -C "$rb" branch -f develop
+feature "$rb" feat-i i.txt "i"
+( cd "$rb" && "$ARP" integrate feat-i ) >/dev/null 2>&1
+[ ! -f "$WORK/after.log" ] && ok "after steps never run when the integration fails" || ko "after steps never run when the integration fails" "ran"
+
 group "test databases never collide"
 r3="$(newrepo dbs true)"
 printf '[env]\ndb_prefix = "t_"\nweb_port = 39011\napi_port = 39012\n' >> /dev/null

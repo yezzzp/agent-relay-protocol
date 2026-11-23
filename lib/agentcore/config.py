@@ -28,6 +28,9 @@ DEFAULTS: dict = {
         "production_worktree": "{root}-wt/{production}",
     },
     "sessions": {"soft_limit": 3, "idle_hours": 6},
+    # shell commands run in the integration worktree after a branch lands (push, migrate the dev
+    # database, restart a server). A failure is reported; the merge stays.
+    "integrate": {"after": []},
     "tests": {
         "record": True,
         "suspect_runs": 10,

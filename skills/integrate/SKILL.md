@@ -25,6 +25,7 @@ cd "$(git rev-parse --show-toplevel)-wt/<area>-<task>"
 2. `arp integrate <task>`. It locks, merges in the integration worktree, rebuilds the database, runs the full suite and the critical e2e tests, and writes `.arp/integration/<date>-<task>.md`.
 3. If it fails, nothing was merged. Read the report, fix it in your branch, and run it again.
 4. When it lands, `arp sessions set ready`. The dev server of that worktree is stopped.
+5. `integrate.after` in the config runs once the branch lands, in the integration worktree: a push, a migration of the shared dev database, a server restart. If one fails the report says so and the merge stays; fix it by hand.
 
 ## Release
 `arp release vN.x.y` runs everything (full suite and every e2e test) and tags production. It never pushes: show the owner the push command it prints.

@@ -222,6 +222,9 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
             state.parent.mkdir(exist_ok=True)
             state.write_text(f"integrated\n{int(_time.time())}\n")
         report.sha = gitwt.git(wt, "rev-parse", "--short=12", "HEAD").stdout.strip()
+        for command in cfg.get("integrate", {}).get("after", []) or []:
+            rc, out, secs = gitwt.sh(command, wt)
+            report.step(f"after: {command}", rc == 0, secs, "" if rc == 0 else out)
         if source and not keep_servers:
             n = gitwt.stop_servers(source["path"])
             if n:
