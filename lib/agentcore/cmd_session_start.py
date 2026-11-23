@@ -114,6 +114,20 @@ def test_report_lines(conn, project, root: Path) -> list[str]:
     return report.session_lines(project["name"])
 
 
+def missing_tool_lines(root: Path) -> list[str]:
+    from agentcore import tools
+
+    cfg = load_project(root)
+    missing = tools.check(root, cfg.config if cfg and cfg.has_config else None)
+    if not missing:
+        return []
+    lines = ["## Missing on this machine"]
+    lines += [f"- {n.tool} ({n.why}): `{n.install or 'install by hand'}`" for n in missing]
+    lines.append("Before the first command that needs one, tell the owner in one line and offer to install it. "
+                 "`arp tools --fix` runs the ones without sudo; the sudo ones are the owner's to run.")
+    return lines
+
+
 def ask_lines(facts: dict) -> list[str]:
     return [
         "# agent-core: first visit to this project",
@@ -166,6 +180,7 @@ def render(cwd: Path, event: str) -> str:
     out += task_lines(root, event)
     if pieces is None or "tests" in pieces:
         out += test_report_lines(conn, project, root)
+    out += missing_tool_lines(root)
 
     new_hash = audit.significant(facts)
     if reg and reg["audit_hash"] and reg["audit_hash"] != new_hash:

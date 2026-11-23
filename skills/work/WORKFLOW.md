@@ -30,7 +30,7 @@ This applies to every task in this project. Where the project's `AGENTS.md` or `
 
 <!-- piece:worktrees -->
 ## Isolation
-- Code changes go in their own worktree and branch from the integration branch, with their own test database and ports (`.arp/config.toml`).
+- Code changes go in their own worktree: `arp worktrees new <branch>`. It branches from the integration branch, copies `.env` and the test map, and gives the worktree its own test database and ports.
 - Never work on the integration or production branch directly.
 - Above the session soft limit (`arp sessions`), warn once and suggest which session to pause. Never block.
 <!-- /piece -->
@@ -44,6 +44,8 @@ Use the `tests` skill. Before any test, write one line: `tier: … (rule N) · c
 4. Is it how it looks? `ui-check`. No test.
 5. Does it break a whole user flow from `.arp/flows.toml`? An e2e test tagged `@flow <id>`. Extend that flow's test first.
 6. None of the above: no test.
+
+In a worktree, `verify.quick` runs only the tests that touch what you changed. The integrator runs every test (`verify.full`) and the critical e2e on the integration branch; a release runs every e2e. Never run the full suite in a worktree unless the owner asks.
 
 Never add retries to a flaky test: fix it or delete it.
 <!-- /piece -->

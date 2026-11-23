@@ -12,7 +12,15 @@ from pathlib import Path
 
 DEFAULTS: dict = {
     "verify": {"quick": "", "full": "", "e2e": "", "e2e_full": ""},
-    "env": {"db_prefix": "", "db_rebuild": "", "db_drop": "", "web_port": 3011, "api_port": 8011},
+    "env": {
+        "db_prefix": "",
+        "db_rebuild": "",
+        "db_drop": "",
+        "web_port": 3011,
+        "api_port": 8011,
+        "copy": [".env", ".testmondata"],
+        "worktree": "{root}-wt/{name}",
+    },
     "branches": {
         "integration": "develop",
         "production": "main",

@@ -2,7 +2,7 @@
 # Tracked in git. Fill every TODO; `arp config check` fails on a missing key.
 
 [verify]
-quick    = "{{VERIFY_QUICK}}"      # run on every change
+quick    = "{{VERIFY_QUICK}}"      # every change: only the tests the change touches
 full     = "{{VERIFY_FULL}}"       # run by the integrator
 e2e      = "{{VERIFY_E2E}}"        # critical end-to-end tests, on every integration
 e2e_full = "{{VERIFY_E2E_FULL}}"   # full end-to-end suite, only before production
@@ -12,6 +12,7 @@ db_prefix  = "{{DB_PREFIX}}"       # test database name prefix, one database per
 db_rebuild = "{{DB_REBUILD}}"      # rebuilds a test database; {name} is replaced
 web_port   = {{WEB_PORT}}          # first free port; each worktree takes the next
 api_port   = {{API_PORT}}
+copy       = [{{COPY}}]          # copied from the integration worktree into each new one (arp worktrees new)
 
 [branches]
 integration = "{{BRANCH_INTEGRATION}}"

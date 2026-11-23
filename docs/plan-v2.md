@@ -12,6 +12,9 @@
 - `ui.login` accepts `label:<text>` and `button:<name>`, and refills the fields until submit is enabled (hydration).
 - `arp lessons` is built. `arp test-report` writes the periodic test-health report, every `tests.report_every_days`.
 
+- Changed-only tests: each stack template has `check_changed` (pytest-testmon, `vitest --changed`; Go caches per package; Rust has no selection). `agent-init` puts it in `verify.quick` and the full command in `verify.full`. `arp worktrees new` copies the test map (`.testmondata`) from the integration worktree, so the first run in a new worktree is already selective.
+- New machine: `arp tools` lists what the project's commands need (uv, pnpm, docker…, Playwright and Chromium for `ui-check`, missing `.venv` or `node_modules`), with the install command for this system. `--fix` runs the ones without sudo. The session-start hook tells the agent what is missing, so it offers the install before the first command fails.
+
 **This repo is public.** No project names, client data or business rules go here. Each project keeps its own adoption plan.
 
 ---

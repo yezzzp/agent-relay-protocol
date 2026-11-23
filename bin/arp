@@ -49,6 +49,8 @@ case "${1:-}" in
     else
       warn "not installed: /plugin marketplace add yezzzp/agent-relay-protocol"
     fi
+    printf '\n%sThis machine%s\n' "$C_BOLD" "$C_OFF"
+    python3 -I "$ARP_HOME/lib/run.py" tools | sed 's/^/  /'
     printf '\n%sCodex skills%s\n' "$C_BOLD" "$C_OFF"
     n=0
     if [ -d "$HOME/.agents/skills" ]; then

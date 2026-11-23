@@ -5,4 +5,5 @@ package_manager: npm
 install: npm ci
 dev: npm run dev
 check: npm run lint && npm run typecheck && npm test
+check_changed: npm run lint && npm run typecheck && npx vitest run --changed {integration}
 test_one: npm test -- <pattern>

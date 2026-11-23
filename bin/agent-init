@@ -150,12 +150,15 @@ detect_branch() { # detect_branch <fallback> <candidate>...
 }
 
 if [ -n "$STACK_FILE" ]; then
-  V_QUICK="$(stack_field "$STACK_FILE" check)"
+  V_FULL="$(stack_field "$STACK_FILE" check)"
+  V_QUICK="$(stack_field "$STACK_FILE" check_changed)"
+  [ -n "$V_QUICK" ] || V_QUICK="$V_FULL"
   PM="$(stack_field "$STACK_FILE" package_manager)"
+  TEST_DEPS="$(stack_field "$STACK_FILE" test_deps)"
+  TEST_MAP="$(stack_field "$STACK_FILE" test_map)"
 else
-  V_QUICK="TODO" ; PM=""
+  V_QUICK="TODO" ; V_FULL="TODO" ; PM="" ; TEST_DEPS="" ; TEST_MAP=""
 fi
-V_FULL="$V_QUICK"
 
 V_E2E="TODO" ; V_E2E_FULL="TODO"
 for pw in . web frontend; do
@@ -171,6 +174,8 @@ done
 DB_PREFIX="$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\+/_/g' -e 's/^_\+//' -e 's/_\+$//')_test_"
 B_INT="$(detect_branch develop develop dev integration)"
 B_PROD="$(detect_branch main main master trunk)"
+V_QUICK="${V_QUICK//\{integration\}/$B_INT}"
+COPY='".env"'; [ -n "$TEST_MAP" ] && COPY="$COPY, \"$TEST_MAP\""
 
 fill() { # fill <template> <KEY=value>... — prints the template with the values in
   local out; out="$(cat "$1")"; shift
@@ -198,7 +203,7 @@ CONFIG_BODY="$(fill "$TPL/config.toml" \
   "VERIFY_QUICK=$(toml_str "$V_QUICK")" "VERIFY_FULL=$(toml_str "$V_FULL")" \
   "VERIFY_E2E=$(toml_str "$V_E2E")" "VERIFY_E2E_FULL=$(toml_str "$V_E2E_FULL")" \
   "DB_PREFIX=$(toml_str "$DB_PREFIX")" "DB_REBUILD=TODO" \
-  "WEB_PORT=3011" "API_PORT=8011" \
+  "WEB_PORT=3011" "API_PORT=8011" "COPY=$COPY" \
   "BRANCH_INTEGRATION=$B_INT" "BRANCH_PRODUCTION=$B_PROD" "UI_URL=")"
 FLOWS_BODY="$(fill "$TPL/flows.toml" \
   "FLOWS=# TODO: add the 5 to 20 main user flows, one table each, as in the example above.")"
@@ -320,6 +325,9 @@ if command -v graphify >/dev/null 2>&1; then
 fi
 
 # --- 4. summary / prompt -----------------------------------------------------
+if [ -n "$TEST_DEPS" ]; then
+  printf '\n%sverify.quick runs only the tests your change touches. It needs: %s%s\n' "$C_DIM" "$TEST_DEPS" "$C_OFF"
+fi
 if [ "$NO_AGENT" -eq 1 ]; then
   printf '\n%sDone (deterministic part).%s\n' "$C_OK" "$C_OFF"
   if [ "$DRY" -eq 0 ]; then

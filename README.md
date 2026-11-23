@@ -114,12 +114,16 @@ Every test run, from every project, is recorded in one local database, `~/.local
 | `arp audit` | Audit again; the next session asks again |
 | `arp projects` | Every project and its state |
 | `arp config check` | Validate `.arp/config.toml`, ports and flows |
-| `arp doctor` | What is installed and where |
+| `arp doctor` | What is installed and where, and what this machine is missing |
+| `arp tools [--fix]` | Missing tools for this project, with the install command; `--fix` runs the ones without sudo |
 | `arp update` | Update the repo, the links and the hooks |
 | `arp sessions [set <state>]` | List sessions and their state, or set yours |
 | `arp integrate <branch>` | Merge into `develop` after the checks pass |
 | `arp release <tag>` | Full suite, then tag `main` |
 | `arp test-health` | Report on test value and cost |
+| `arp test-report` | The periodic report (every 7 days, started by the session hook) |
+| `arp lessons [--check]` | Memory index limits, and rules that should become checks |
+| `arp worktrees new <branch>` | Worktree from `develop`, with `.env`, the test map, its own ports and database |
 | `arp worktrees prune` | Remove merged worktrees and their databases |
 
 ## Skills
