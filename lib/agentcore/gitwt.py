@@ -91,6 +91,31 @@ def _inside(path: Path | None, base: Path) -> bool:
         return False
 
 
+def pids_inside(base: Path) -> list[int]:
+    """Every process whose working directory is inside ``base`` (a shell, an agent, a server)."""
+    me = {os.getpid(), os.getppid()}
+    return [pid for pid in _pids() if pid not in me and _inside(_cwd(pid), base)]
+
+
+def created_at(path, branch: str) -> str:
+    """The commit a branch was created on: ``.arp/base`` from ``arp worktrees new``, else the reflog."""
+    marker = Path(path) / ".arp" / "base"
+    if marker.is_file():
+        return marker.read_text().strip()
+    log = git(path, "reflog", "show", "--format=%H", f"refs/heads/{branch}")
+    lines = log.stdout.split()
+    return lines[-1] if log.returncode == 0 and lines else ""
+
+
+def own_commits(path, branch: str) -> int:
+    """Commits the branch made after it was created. Unknown origin counts as one, never as zero."""
+    base = created_at(path, branch)
+    if not base:
+        return -1
+    out = git(path, "rev-list", "--count", f"{base}..refs/heads/{branch}")
+    return int(out.stdout.strip() or 0) if out.returncode == 0 else -1
+
+
 def server_pids(base: Path) -> list[int]:
     found = []
     for pid in _pids():

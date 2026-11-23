@@ -119,6 +119,25 @@ case "$out" in *feat-open*) ko "unmerged is kept" "listed feat-open" ;; *) ok "u
 git -C "$r" rev-parse --verify -q refs/heads/feat-s >/dev/null && ko "branch deleted" "still exists" || ok "branch deleted"
 [ -d "$r-wt/develop" ] && [ -d "$r-wt/feat-open" ] && ok "integration and open worktrees kept" || ko "integration and open worktrees kept" "removed"
 
+group "prune keeps a fresh branch after develop moves"
+r="$(newrepo fresh true)"
+git -C "$r" worktree add -q -b feat-new "$r-wt/feat-new" develop
+printf 'SECRET=1\n' > "$r-wt/feat-new/.env"; printf '.env\n' > "$r.exclude"
+git -C "$r" config core.excludesFile "$r.exclude"
+feature "$r" feat-other x.txt "x"
+( cd "$r" && "$ARP" integrate feat-other ) >/dev/null 2>&1
+( cd "$r" && "$ARP" worktrees prune --yes ) >/dev/null 2>&1
+[ -d "$r-wt/feat-new" ] && ok "a branch with no commits of its own is kept" || ko "a branch with no commits of its own is kept" "removed with its .env"
+git -C "$r" rev-parse --verify -q refs/heads/feat-new >/dev/null && ok "its branch is kept" || ko "its branch is kept" "deleted"
+
+group "prune skips a session marked working"
+r="$(newrepo busy true)"
+feature "$r" feat-busy b.txt "b"
+( cd "$r" && "$ARP" integrate feat-busy ) >/dev/null 2>&1
+( cd "$r-wt/feat-busy" && "$ARP" sessions set working ) >/dev/null
+( cd "$r" && "$ARP" worktrees prune --yes ) >/dev/null 2>&1
+[ -d "$r-wt/feat-busy" ] && ok "a working session is never pruned" || ko "a working session is never pruned" "removed"
+
 group "arp config check"
 r="$(newrepo cfg true)"
 out="$(cd "$r" && "$ARP" config check 2>&1)"; rc=$?

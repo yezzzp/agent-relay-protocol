@@ -15,6 +15,13 @@ def register(parser) -> None:
     parser.set_defaults(func=run)
 
 
+def read_state(path: Path) -> str:
+    try:
+        return (path / ".arp" / "session-state").read_text().splitlines()[0].strip()
+    except (OSError, IndexError):
+        return ""
+
+
 def free_port(start: int, used: set[int]) -> int:
     port = start
     while port in used:
@@ -38,6 +45,8 @@ def new(project, main: Path, name: str) -> int:
     if made.returncode != 0:
         print(made.stderr.strip())
         return 1
+    (path / ".arp").mkdir(exist_ok=True)
+    (path / ".arp" / "base").write_text(gitwt.git(path, "rev-parse", "HEAD").stdout.strip() + "\n")
     copied = []
     for rel in cfg["env"].get("copy", []):
         src = source / rel
@@ -89,15 +98,31 @@ def run(args) -> int:
         Path(cfg["branches"]["production_worktree"].format(root=str(main), production=prod)).resolve(),
     }
     tip = gitwt.git(main, "rev-parse", integ).stdout.strip()
-    victims = []
+    victims, kept = [], []
     for w in gitwt.worktrees(main):
         branch = w["branch"]
         if w["path"].resolve() in protected or not branch or branch in (integ, prod):
             continue
         merged = gitwt.git(main, "merge-base", "--is-ancestor", branch, integ).returncode == 0
-        own = gitwt.git(main, "rev-parse", branch).stdout.strip() != tip
-        if merged and own and not gitwt.dirty_files(w["path"]):
+        if not merged:
+            continue
+        why = ""
+        if gitwt.git(main, "rev-parse", branch).stdout.strip() == tip:
+            why = "same commit as the integration branch"
+        elif gitwt.own_commits(w["path"], branch) == 0:
+            why = "no commits of its own yet"
+        elif read_state(w["path"]) == "working":
+            why = "session marked working"
+        elif gitwt.dirty_files(w["path"]):
+            why = "uncommitted changes"
+        elif gitwt.pids_inside(w["path"]):
+            why = "a process is running inside it"
+        if why:
+            kept.append((w, why))
+        else:
             victims.append(w)
+    for w, why in kept:
+        print(f"keep: {w['branch']}  ({why})")
     if not victims:
         print("nothing to prune")
         return 0
