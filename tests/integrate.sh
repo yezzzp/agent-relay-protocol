@@ -119,6 +119,23 @@ case "$out" in *feat-open*) ko "unmerged is kept" "listed feat-open" ;; *) ok "u
 git -C "$r" rev-parse --verify -q refs/heads/feat-s >/dev/null && ko "branch deleted" "still exists" || ok "branch deleted"
 [ -d "$r-wt/develop" ] && [ -d "$r-wt/feat-open" ] && ok "integration and open worktrees kept" || ko "integration and open worktrees kept" "removed"
 
+group "prune drops the test database with the integration branch's script"
+rd="$(newrepo dropper true)"
+git -C "$rd" worktree add -q "$rd-wt/develop" develop
+mkdir -p "$rd-wt/develop/scripts"
+printf '#!/bin/sh\necho "$1" >> %s/dropped.log\n' "$WORK" > "$rd-wt/develop/scripts/drop.sh"; chmod +x "$rd-wt/develop/scripts/drop.sh"
+python3 - "$rd-wt/develop/.arp/config.toml" <<'PY2'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace("[env]\n", '[env]\ndb_prefix = "t_"\ndb_drop = "scripts/drop.sh {name}"\n', 1))
+PY2
+git -C "$rd-wt/develop" add -A && git -C "$rd-wt/develop" commit -qm "drop script on develop only"
+feature "$rd" feat-d d.txt "d"
+( cd "$rd-wt/feat-d" && "$ARP" integrate feat-d ) >/dev/null 2>&1
+( cd "$rd" && "$ARP" worktrees prune --yes ) >/dev/null 2>&1
+[ ! -d "$rd-wt/feat-d" ] && ok "pruned from the main checkout" || ko "pruned from the main checkout" "still there"
+has "the drop script that only develop has ran" "$(cat "$WORK/dropped.log" 2>/dev/null)" "t_feat_d"
+
 group "prune keeps a fresh branch after develop moves"
 r="$(newrepo fresh true)"
 git -C "$r" worktree add -q -b feat-new "$r-wt/feat-new" develop

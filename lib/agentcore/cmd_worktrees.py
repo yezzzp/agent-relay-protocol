@@ -102,7 +102,15 @@ def run(args) -> int:
             return 2
         return new(project, main, args.name)
     cfg = project.config
-    integ, prod = cfg["branches"]["integration"], cfg["branches"]["production"]
+    integ = cfg["branches"]["integration"]
+    # The integration worktree holds the project's real config and scripts; the folder prune is
+    # called from may be on a branch without them (a docs branch in the main checkout).
+    integ_wt = Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ))
+    if (integ_wt / ".arp" / "config.toml").is_file() and (live := config.load_project(integ_wt)):
+        cfg = live.config
+        integ = cfg["branches"]["integration"]
+    drop_cwd = integ_wt if integ_wt.is_dir() else main
+    prod = cfg["branches"]["production"]
     protected = {
         main.resolve(),
         Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ)).resolve(),
@@ -152,7 +160,7 @@ def run(args) -> int:
             if any(gitwt.test_db(cfg, o["path"]) == name for o in gitwt.worktrees(main)):
                 print(f"  kept database {name}: another worktree uses it")
                 continue
-            subprocess.run(drop.replace("{name}", name), shell=True, cwd=str(main))
+            subprocess.run(drop.replace("{name}", name), shell=True, cwd=str(drop_cwd))
     if not args.yes:
         print("dry run; pass --yes to remove")
     return 0
