@@ -12,7 +12,7 @@ description: Keep parallel work within what the owner can follow. Soft limit of 
 
 ## Board
 - `arp sessions` shows one line per worktree: branch, state, last activity, uncommitted changes, dev-server RAM.
-- Set your own state when it changes: `arp sessions set working | waiting-owner | ready | idle`.
+- Set your own state when it changes: `arp sessions set working | waiting-owner | ready | idle`. `arp integrate` sets `integrated` when the branch lands; `arp worktrees prune` never removes a session that shows `working`.
 
 ## Pausing
 A session that has waited on the owner longer than `sessions.idle_hours`:

@@ -63,7 +63,7 @@ class Report:
         folder = self.main / ".arp" / "integration"
         folder.mkdir(parents=True, exist_ok=True)
         slug = self.branch.replace("/", "-")
-        path = folder / f"{self.when:%Y-%m-%d-%H%M}-{slug}.md"
+        path = folder / f"{self.when:%Y-%m-%d-%H%M%S}-{slug}.md"
         lines = [
             f"# {self.title}: {self.branch}",
             "",
@@ -102,6 +102,9 @@ def ensure_worktree(main: Path, path: Path, branch: str) -> tuple[Path, str | No
     holder = next((w["path"] for w in existing.values() if w["branch"] == branch), None)
     if holder is not None:
         path = holder
+    if path.resolve() in existing and not path.is_dir():
+        gitwt.git(main, "worktree", "prune")
+        existing.pop(path.resolve())
     if path.resolve() in existing:
         w = existing[path.resolve()]
         if w["branch"] != branch:
@@ -146,6 +149,16 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
     if gitwt.git(main, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").returncode != 0:
         print(f"no such branch: {branch}", file=sys.stderr)
         return 1
+    if branch in (integ, cfg["branches"]["production"]):
+        print(f"{branch} is the integration or production branch; integrate a task branch", file=sys.stderr)
+        return 1
+    if not (cfg["verify"]["full"] or "").strip():
+        print("verify.full is empty in .arp/config.toml: nothing would be checked, so nothing is merged. "
+              "Set it (agent-init proposes one), then integrate again.", file=sys.stderr)
+        return 1
+    if gitwt.git(main, "merge-base", "--is-ancestor", branch, integ).returncode == 0:
+        print(f"nothing to integrate: every commit of {branch} is already in {integ}")
+        return 0
     with lock(main) as got:
         if not got:
             print("another integration is running; try again when it finishes", file=sys.stderr)
@@ -202,6 +215,12 @@ def integrate(branch: str, dry_run=False, keep_servers=False) -> int:
             )
             return finish(report, 1)
         report.outcome = "landed"
+        if source:
+            import time as _time
+
+            state = source["path"] / ".arp" / "session-state"
+            state.parent.mkdir(exist_ok=True)
+            state.write_text(f"integrated\n{int(_time.time())}\n")
         report.sha = gitwt.git(wt, "rev-parse", "--short=12", "HEAD").stdout.strip()
         if source and not keep_servers:
             n = gitwt.stop_servers(source["path"])
@@ -219,6 +238,9 @@ def release(tag: str) -> int:
     cfg = project.config
     integ, prod = cfg["branches"]["integration"], cfg["branches"]["production"]
     report = Report(main, tag, "Release")
+    if not (cfg["verify"]["full"] or "").strip() or not (cfg["verify"]["e2e_full"] or "").strip():
+        print("verify.full and verify.e2e_full must be set in .arp/config.toml before a release.", file=sys.stderr)
+        return 1
     with lock(main) as got:
         if not got:
             print("another integration is running; try again when it finishes", file=sys.stderr)

@@ -7,7 +7,19 @@ import subprocess
 import time
 from pathlib import Path
 
-SERVER_RE = re.compile(r"next|vite|uvicorn|npm run dev|pnpm dev")
+SERVER_BINS = {"next", "next-server", "vite", "uvicorn", "gunicorn", "nodemon", "webpack-dev-server", "astro", "remix"}
+DEV_SCRIPTS = re.compile(r"(?:^|\s)(?:npm|pnpm|yarn|bun)(?:\s+run)?\s+dev(?:\s|$)|manage\.py\s+runserver|flask\s+run")
+STATE_FILES = (".arp/config.toml", ".arp/flows.toml")
+
+
+def is_dev_server(argv: list[str]) -> bool:
+    """A dev server by its program name or its dev script, never by a substring of a file name."""
+    names = {os.path.basename(a) for a in argv[:3]}
+    if names & SERVER_BINS:
+        return True
+    if any(os.path.basename(a) in SERVER_BINS for a in argv if "node_modules" in a):
+        return True
+    return bool(DEV_SCRIPTS.search(" ".join(argv)))
 
 
 def git(path, *args, check=False):
@@ -46,9 +58,15 @@ def worktrees(path=".") -> list[dict]:
 
 
 def dirty_files(path) -> list[str]:
-    """Uncommitted paths, ignoring agent-core's own .arp/ state files."""
+    """Uncommitted paths. agent-core's own state under .arp/ is ignored; its tracked config is not."""
     out = git(path, "status", "--porcelain").stdout.splitlines()
-    return [line for line in out if not line[3:].strip('"').startswith(".arp/")]
+    keep = []
+    for line in out:
+        name = line[3:].strip('"')
+        if name.startswith(".arp/") and name not in STATE_FILES and not line.startswith(" M"):
+            continue
+        keep.append(line)
+    return keep
 
 
 def expand(template: str, root: Path, **names) -> Path:
@@ -96,10 +114,27 @@ def _inside(path: Path | None, base: Path) -> bool:
         return False
 
 
+def _lsof_cwds() -> dict[int, Path]:
+    """pid -> working directory where there is no /proc (macOS)."""
+    try:
+        out = subprocess.run(["lsof", "-a", "-d", "cwd", "-Fpn"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    found, pid = {}, None
+    for line in out.splitlines():
+        if line.startswith("p"):
+            pid = int(line[1:])
+        elif line.startswith("n") and pid is not None:
+            found[pid] = Path(line[1:])
+    return found
+
+
 def pids_inside(base: Path) -> list[int]:
     """Every process whose working directory is inside ``base`` (a shell, an agent, a server)."""
     me = {os.getpid(), os.getppid()}
-    return [pid for pid in _pids() if pid not in me and _inside(_cwd(pid), base)]
+    if os.path.isdir("/proc/self"):
+        return [pid for pid in _pids() if pid not in me and _inside(_cwd(pid), base)]
+    return [pid for pid, cwd in _lsof_cwds().items() if pid not in me and _inside(cwd, base)]
 
 
 def created_at(path, branch: str) -> str:
@@ -126,7 +161,7 @@ def server_pids(base: Path) -> list[int]:
     for pid in _pids():
         if pid == os.getpid() or not _inside(_cwd(pid), base):
             continue
-        if SERVER_RE.search(" ".join(_cmdline(pid))):
+        if is_dev_server(_cmdline(pid)):
             found.append(pid)
     return found
 

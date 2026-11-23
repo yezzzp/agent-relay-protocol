@@ -138,6 +138,66 @@ feature "$r" feat-busy b.txt "b"
 ( cd "$r" && "$ARP" worktrees prune --yes ) >/dev/null 2>&1
 [ -d "$r-wt/feat-busy" ] && ok "a working session is never pruned" || ko "a working session is never pruned" "removed"
 
+group "never lose work (review round)"
+r="$(newrepo keep true)"
+feature "$r" feat-k k.txt "k"
+mkdir -p "$r-wt/develop"; git -C "$r" worktree add -q "$r-wt/develop" develop 2>/dev/null
+printf '# edited by hand\n' >> "$r-wt/develop/.arp/config.toml"
+( cd "$r" && "$ARP" integrate feat-k --dry-run ) >/dev/null 2>&1
+grep -q "edited by hand" "$r-wt/develop/.arp/config.toml" && ok "dry run keeps an edit to .arp/config.toml" || ko "dry run keeps an edit to .arp/config.toml" "reset"
+( cd "$r" && "$ARP" integrate feat-k ) >/dev/null 2>&1
+grep -q "edited by hand" "$r-wt/develop/.arp/config.toml" && ok "integrate refuses rather than reset it" || ko "integrate refuses rather than reset it" "reset"
+git -C "$r-wt/develop" checkout -q -- .arp/config.toml
+
+feature "$r" feat-cfg c.txt "c"
+( cd "$r" && "$ARP" integrate feat-cfg ) >/dev/null 2>&1
+printf '# mine\n' >> "$r-wt/feat-cfg/.arp/config.toml"
+( cd "$r" && "$ARP" worktrees prune --yes ) >/dev/null 2>&1
+[ -d "$r-wt/feat-cfg" ] && ok "prune keeps a worktree with an edited .arp/config.toml" || ko "prune keeps a worktree with an edited .arp/config.toml" "removed"
+
+git -C "$r-wt/feat-cfg" checkout -q -- .arp/config.toml
+out="$(cd "$r" && "$ARP" integrate feat-cfg 2>&1)"; rc=$?
+has "integrating an already merged branch says so" "$out" "nothing to integrate"
+out="$(cd "$r" && "$ARP" integrate main 2>&1)"; rc=$?
+eq "the production branch is never integrated into develop" "$rc" "1"
+
+r2="$(newrepo nochecks "")"
+feature "$r2" feat-n n.txt "n"
+out="$(cd "$r2" && "$ARP" integrate feat-n 2>&1)"; rc=$?
+eq "no verify.full: integrate refuses" "$rc" "1"
+has "and says what is missing" "$out" "verify.full"
+
+group "test databases never collide"
+r3="$(newrepo dbs true)"
+printf '[env]\ndb_prefix = "t_"\nweb_port = 39011\napi_port = 39012\n' >> /dev/null
+python3 -I - "$r3/.arp/config.toml" <<'PY'
+import sys; p=sys.argv[1]; t=open(p).read().replace("[env]\n", '[env]\ndb_prefix = "t_"\ndb_rebuild = "echo REBUILD {name}"\n'); open(p,"w").write(t)
+PY
+git -C "$r3" commit -qam cfg; git -C "$r3" branch -f develop
+( cd "$r3" && "$ARP" worktrees new web/orders.v2 ) >/dev/null 2>&1
+out="$(cd "$r3" && "$ARP" worktrees new web/orders-v2 2>&1)"; rc=$?
+eq "a second worktree with the same database name is refused" "$rc" "1"
+mkdir -p "$r3-wt"; git -C "$r3" worktree add -q "$r3-wt/develop" develop 2>/dev/null
+out="$(cd "$r3" && "$ARP" worktrees new Develop 2>&1)"; rc=$?
+eq "a worktree cannot take the integration database" "$rc" "1"
+
+group "only real dev servers are stopped"
+r4="$(newrepo srv true)"
+feature "$r4" feat-s2 s.txt "s"
+( cd "$r4-wt/feat-s2" && exec -a "python3 notes/invite-list.md" sleep 30 ) &
+SPID=$!
+sleep 0.5
+( cd "$r4" && "$ARP" integrate feat-s2 ) >/dev/null 2>&1
+kill -0 $SPID 2>/dev/null && ok "a process named invite-list is not killed" || ko "a process named invite-list is not killed" "killed"
+kill $SPID 2>/dev/null
+
+group "missing integration worktree folder"
+r5="$(newrepo gone true)"
+feature "$r5" feat-g g.txt "g"
+git -C "$r5" worktree add -q "$r5-wt/develop" develop; rm -rf "$r5-wt/develop"
+out="$(cd "$r5" && "$ARP" integrate feat-g 2>&1)"; rc=$?
+eq "a deleted integration folder is recreated and the merge lands" "$rc" "0"
+
 group "arp config check"
 r="$(newrepo cfg true)"
 out="$(cd "$r" && "$ARP" config check 2>&1)"; rc=$?

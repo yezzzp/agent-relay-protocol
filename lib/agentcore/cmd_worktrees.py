@@ -15,11 +15,12 @@ def register(parser) -> None:
     parser.set_defaults(func=run)
 
 
-def read_state(path: Path) -> str:
-    try:
-        return (path / ".arp" / "session-state").read_text().splitlines()[0].strip()
-    except (OSError, IndexError):
-        return ""
+def session_state(path: Path, cfg: dict) -> str:
+    """The same state `arp sessions` shows: the recorded one, else working after a recent commit."""
+    from agentcore.cmd_sessions import read_state
+
+    last = gitwt.git(path, "log", "-1", "--format=%ct").stdout.strip()
+    return read_state(path, float(last or 0), float(cfg["sessions"]["idle_hours"]))
 
 
 def free_port(start: int, used: set[int]) -> int:
@@ -35,6 +36,16 @@ def new(project, main: Path, name: str) -> int:
     source = Path(cfg["branches"]["integration_worktree"].format(root=str(main), integration=integ))
     if not source.is_dir():
         source = main
+    if cfg["env"]["db_prefix"]:
+        wanted = gitwt.test_db(cfg, Path(name.replace("/", "-")))
+        taken = {gitwt.test_db(cfg, w["path"]): w["path"] for w in gitwt.worktrees(main)}
+        taken[gitwt.test_db(cfg, source)] = source
+        taken.setdefault(gitwt.test_db(cfg, Path(cfg["branches"]["production_worktree"].format(
+            root=str(main), production=cfg["branches"]["production"]))), "production")
+        taken.setdefault(gitwt.test_db(cfg, Path(integ)), "integration")
+        if wanted in taken:
+            print(f"the test database {wanted} already belongs to {taken[wanted]}; pick another branch name")
+            return 1
     path = Path(cfg["env"]["worktree"].format(root=str(main), name=re.sub(r"[^A-Za-z0-9._-]+", "-", name.replace("/", "-"))))
     if path.exists():
         print(f"already exists: {path}")
@@ -111,7 +122,7 @@ def run(args) -> int:
             why = "same commit as the integration branch"
         elif gitwt.own_commits(w["path"], branch) == 0:
             why = "no commits of its own yet"
-        elif read_state(w["path"]) == "working":
+        elif session_state(w["path"], cfg) == "working":
             why = "session marked working"
         elif gitwt.dirty_files(w["path"]):
             why = "uncommitted changes"
@@ -138,6 +149,9 @@ def run(args) -> int:
         drop = cfg["env"]["db_drop"]
         if drop:
             name = gitwt.test_db(cfg, w["path"])
+            if any(gitwt.test_db(cfg, o["path"]) == name for o in gitwt.worktrees(main)):
+                print(f"  kept database {name}: another worktree uses it")
+                continue
             subprocess.run(drop.replace("{name}", name), shell=True, cwd=str(main))
     if not args.yes:
         print("dry run; pass --yes to remove")

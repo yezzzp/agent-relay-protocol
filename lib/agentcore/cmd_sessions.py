@@ -5,7 +5,7 @@ from pathlib import Path
 from agentcore import config, gitwt
 
 HELP = "Show one line per worktree with its state; 'set <state>' records the current one."
-STATES = ("working", "waiting-owner", "ready", "idle")
+STATES = ("working", "waiting-owner", "ready", "idle", "integrated")
 
 
 def register(parser) -> None:
