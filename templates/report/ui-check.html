@@ -12,9 +12,11 @@
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #000; --fg: #f5f5f7; --fg2: #98989d; --line: #2c2c2e; --panel: #1c1c1e;
-    --error: #ff453a; --warning: #ff9f0a; --ok: #32d74b; --accent: #2997ff; }
+  :root:not([data-theme="light"]) { --bg: #000; --fg: #f5f5f7; --fg2: #98989d; --line: #2c2c2e; --panel: #1c1c1e;
+    --error: #ff453a; --warning: #ff9f0a; --ok: #32d74b; --accent: #2997ff; color-scheme: dark; }
 }
+:root[data-theme="dark"] { --bg: #000; --fg: #f5f5f7; --fg2: #98989d; --line: #2c2c2e; --panel: #1c1c1e;
+    --error: #ff453a; --warning: #ff9f0a; --ok: #32d74b; --accent: #2997ff; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
 main { max-width: 760px; margin: 0 auto; padding: 56px 16px 96px; }

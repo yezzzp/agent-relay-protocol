@@ -7,8 +7,9 @@
 <style>
   :root { --bg:#fbfbfa; --fg:#1f2328; --muted:#6a7078; --line:#e3e3df; --accent:#1f5fbf; --warn:#a15c00; --bad:#b3261e; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#16181b; --fg:#e4e6e8; --muted:#8d949c; --line:#2c3035; --accent:#7ab0ff; --warn:#e0a458; --bad:#ff8a80; }
+    :root:not([data-theme="light"]) { --bg:#16181b; --fg:#e4e6e8; --muted:#8d949c; --line:#2c3035; --accent:#7ab0ff; --warn:#e0a458; --bad:#ff8a80; color-scheme: dark; }
   }
+  :root[data-theme="dark"] { --bg:#16181b; --fg:#e4e6e8; --muted:#8d949c; --line:#2c3035; --accent:#7ab0ff; --warn:#e0a458; --bad:#ff8a80; color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }

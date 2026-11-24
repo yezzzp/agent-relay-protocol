@@ -53,7 +53,6 @@ check "no write request reached the server" '[ ! -s "$WRITE_LOG" ]'
 check "a blocked write is reported" 'jq -e ".findings[]|select(.check==\"blocked-write\" and (.text|test(\"menu-write\")))" "$J" >/dev/null'
 check "whole words only: «Assigned to» is still opened" '! grep -q "Assigned to" <<<"$(jq -r ".findings[]|select(.check==\"blocked-write\")|.text" "$J")"'
 
-
 # known failures: unbounded input, focus not restored, double submit (only with --probe)
 : > "$WRITE_LOG"
 OUT="$(cd "$WORK/project" && node "$REPO/scripts/ui-check.mjs" --url /behavior.html 2>&1)"
