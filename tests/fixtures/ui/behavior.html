@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Behavior</title>
+<style>[role=dialog]{position:fixed;top:40px;left:40px;background:#fff;border:1px solid #ccc;padding:16px}</style></head>
+<body><main>
+<h1>Behavior</h1>
+<script>
+const post = (p) => fetch(p, { method: "POST" }).catch(() => {});
+async function guarded(b, p) { if (b.disabled) return; b.disabled = true; try { await post(p); } finally { b.disabled = false; } }
+function openDialog(id, restore) {
+  const d = document.getElementById(id), t = document.activeElement;
+  d.hidden = false; d.querySelector("input").focus();
+  d.onkeydown = (e) => { if (e.key !== "Escape") return; d.hidden = true; restore ? t.focus() : document.activeElement.blur(); };
+}
+</script>
+<button onclick="post('/api/unguarded')">Guardar pedido</button>
+<button onclick="guarded(this, '/api/guarded')">Emitir nota</button>
+<label>Buscar <input type="search" id="free"></label>
+<label>Nombre <input type="text" maxlength="64" id="bounded"></label>
+<button aria-haspopup="dialog" onclick="openDialog('lost', false)">Filtros</button>
+<button aria-haspopup="dialog" onclick="openDialog('kept', true)">Columnas</button>
+<div role="dialog" id="lost" hidden><input maxlength="10" aria-label="a"></div>
+<div role="dialog" id="kept" hidden><input maxlength="10" aria-label="b"></div>
+<a href="/logout" onclick="post('/api/logout'); return false">Cerrar sesión</a>
+</main></body></html>

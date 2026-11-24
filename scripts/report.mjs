@@ -28,7 +28,7 @@ const img = (dir, rel, alt, cls = "") => {
 };
 
 const LABEL = {
-  "cut-off-text": "Cut-off text", "unequal-spacing": "Unequal spacing", "borderless-color": "Border without color",
+  "cut-off-text": "Cut-off text", "unbounded-input": "Input without a length limit", "focus-not-restored": "Focus not restored", "double-submit": "Double submit", "unequal-spacing": "Unequal spacing", "borderless-color": "Border without color",
   "visible-scrollbar": "Visible scrollbar", "native-control": "Native control", "layer-outside-viewport": "Layer outside the window",
   "horizontal-scroll": "Horizontal scroll", "console-error": "Console error", "failed-request": "Failed request",
   "repeated-text": "Repeated text", "chat-repeats-panel": "Chat repeats the panel", consistency: "Inconsistent", "could-not-check": "Could not check",

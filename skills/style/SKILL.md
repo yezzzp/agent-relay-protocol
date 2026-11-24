@@ -55,10 +55,26 @@ If a screen seems to need an explanation, change the control. Remove:
 - Use the real component library (for example shadcn/ui installed by its CLI), never hand-made imitations.
 - **A restyle never loses information:** compare field by field with the old version.
 
-## 5. Done means
+## 5. Known failures
+Each one has been seen on real screens. Make it impossible in the shared component, so no screen needs to remember it. `ui-check` catches the ones a script can see. For React, the reference code is in `react.md`, next to this file.
+
+| Failure | Never | Make it impossible | Caught by |
+|---|---|---|---|
+| Double submit | a double click creates two records or two downloads | the shared button disables itself while its action runs; the API is idempotent too | `ui-check --probe`: `double-submit` |
+| Unbounded input | a 10 000-character paste reaches the API or breaks the row | the shared text input and search box carry a default `maxlength` | `unbounded-input` |
+| Focus lost | closing a menu or dialog with Esc leaves focus on the page | use the library's dialog and menu, which return focus to the trigger | `focus-not-restored` |
+| Action with nothing to do | "Download", "Send" or "Save" enabled with no rows or no changes | the button's `disabled` comes from the data, not from a click handler that complains | review |
+| Draft lost | reload or Back erases a half-filled form or cart | the shared draft hook keeps it until it is saved or discarded | review |
+| Generic error | "Something went wrong" when the API said why | the shared request helper shows the API's message | review |
+| Native control | a raw select, checkbox or date input | the project's component, enforced by lint | `native-control` |
+
+**The list grows.** A finding that could happen on any screen of any product is a class, not a screen bug. Fix it in the shared component, add a lint rule if one can see it, and add a row here, in generic words: no product names or data.
+
+## 6. Done means
 - [ ] §1 list applied. One main action per view, at most two buttons together.
 - [ ] Checked in light and dark, with the right role. Every menu, select and dialog opened. Something created and edited for real.
-- [ ] `ui-check` clean: repeated text, spacing, cut-off text, console errors.
+- [ ] Built from the shared components of §5, never a hand-made button, input or dialog.
+- [ ] `ui-check --probe` clean: repeated text, spacing, cut-off text, console errors, double submit.
 
 ## Briefing a subagent on UI
 Paste the rules that apply **as written**. Give concrete rules, never adjectives ("warm", "lively"). Name the existing screen to copy.

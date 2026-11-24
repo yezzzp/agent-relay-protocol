@@ -6,9 +6,9 @@ import path from "node:path";
 import { list, loadPlaywright, loadUi, login, parseArgs, parseSize, resolveUrl } from "./lib/common.mjs";
 import { domChecks } from "./lib/page-checks.mjs";
 
-const args = parseArgs(process.argv.slice(2), ["tabs", "only-failures", "help", "no-login"]);
+const args = parseArgs(process.argv.slice(2), ["tabs", "only-failures", "help", "no-login", "probe"]);
 if (args.help || (!args.url && !args._.length)) {
-  console.error(`usage: ui-check.mjs --url <url|path> [--url ...] [--tabs] [--only-failures]
+  console.error(`usage: ui-check.mjs --url <url|path> [--url ...] [--tabs] [--probe] [--only-failures]
   [--project dir] [--node-root dir] [--base-url u] [--viewports 1440x900,390x844] [--themes light,dark]
   [--out dir] [--no-login]
 Settings come from <project>/.arp/config.toml [ui]; flags win.`);
@@ -41,6 +41,12 @@ const allowWrite = [].concat(cfg.allow_write ?? []).map((p) => new RegExp(p));
 const LAYERS = '[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [popover]:popover-open';
 const TRIGGERS = '[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [role="combobox"]';
 const TABS = cfg.tab_selector ?? '[role="tab"]';
+// --probe double-clicks every action button. Writes stay blocked, but each is held before the abort:
+// aborted at once, the button would come back enabled and the second click would look like a double submit.
+const HOLD_MS = Number(cfg.probe_hold_ms ?? 800);
+const maxProbes = Number(cfg.max_probes ?? 25);
+const NEVER_PROBE = /(?<![\p{L}\p{N}])(?:sign out|log out|logout|cerrar sesión|salir|sair)(?![\p{L}\p{N}])/iu;
+const PROBE_SEL = 'button, [role="button"], input[type="submit"]';
 
 const chromium = loadPlaywright(project, args["node-root"] ?? cfg.node_root);
 const browser = await chromium.launch();
@@ -66,12 +72,19 @@ for (const vp of viewports) {
     if (!args["no-login"]) await login(page, cfg.login, base);
     noise.length = 0;
     const blocked = new Set();
+    let probing = false;
+    const writes = [];
     await ctx.route("**/*", (route) => {
       const req = route.request();
       if (SAFE_METHODS.has(req.method()) || allowWrite.some((re) => re.test(req.url()))) return route.continue();
+      if (probing) {
+        writes.push(`${req.method()} ${req.url().replace(/\?.*$/, "")}`);
+        return new Promise((r) => setTimeout(r, HOLD_MS)).then(() => route.abort("blockedbyclient")).catch(() => {});
+      }
       blocked.add(`${req.method()} ${req.url().replace(/\?.*$/, "")}`);
       return route.abort("blockedbyclient");
     });
+    const shotOf = (name) => views.find((v) => v.theme === theme && v.viewport === vp && v.name === name)?.screenshot ?? "";
     const loginPath = cfg.login?.url ? new URL(resolveUrl(cfg.login.url, base)).pathname : null;
 
     const opts = (rootSelector) => ({ rootSelector, theme, chatSelector: cfg.chat_selector, panelSelector: cfg.panel_selector, chatMessageSelector: cfg.chat_message_selector, allowNative: cfg.allow_native });
@@ -129,6 +142,15 @@ for (const vp of viewports) {
             items.push({ severity: "warning", check: "layer-outside-viewport", selector: `[trigger] ${key}`, text: `layer at ${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)} in a ${size.width}x${size.height} window` });
           const file = `${theme}-${vp}-${slug(view.name)}-layer-${String(i + 1).padStart(2, "0")}.jpg`;
           await page.screenshot({ path: path.join(out, file), type: "jpeg", quality: 85 });
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(200);
+          if (!(await page.locator(`[data-ui-check="${mark}"]`).isVisible().catch(() => false))) {
+            const back = await t.evaluate((el) => el === document.activeElement || el.contains(document.activeElement)).catch(() => true);
+            if (!back) {
+              const now = await page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? "the page body" : `<${a.tagName.toLowerCase()}>`; });
+              items.push({ severity: "warning", check: "focus-not-restored", selector: `[trigger] ${key}`, text: `closing «${key}» with Escape left focus on ${now}, not on its trigger` });
+            }
+          }
           if (items.length) record({ name: `${view.name} / ${key}` }, file, items);
           else unlinkSync(path.join(out, file));
         } catch {
@@ -136,6 +158,41 @@ for (const vp of viewports) {
         }
       }
       await closeLayers();
+    }
+
+    async function probeView(name, url) {
+      const scope = (await page.locator("main").count()) ? "main " : "";
+      const sel = PROBE_SEL.split(", ").map((x) => scope + x).join(", ");
+      const total = Math.min(await page.locator(sel).count(), maxProbes);
+      const quiet = noise.length;
+      let dirty = false;
+      for (let i = 0; i < total; i++) {
+        try {
+          if (dirty) { await page.goto(url, { waitUntil: "networkidle" }); dirty = false; }
+          const b = page.locator(sel).nth(i);
+          if (!(await b.isVisible()) || (await b.isDisabled())) continue;
+          const info = await b.evaluate((el) => ({
+            said: [el.getAttribute("aria-label"), el.getAttribute("title"), el.innerText, el.value].filter(Boolean).join(" ").trim().replace(/\s+/g, " "),
+            trigger: el.matches('[aria-haspopup]:not([aria-haspopup="false"]), [aria-expanded], [role="combobox"], [role="tab"]'),
+            nav: !!el.closest("nav, aside, [role='navigation']") && !el.closest("main"),
+          }));
+          if (info.trigger || info.nav || NEVER_PROBE.test(info.said)) continue;
+          writes.length = 0;
+          probing = true;
+          await b.dblclick({ timeout: 2000 });
+          await page.waitForTimeout(HOLD_MS + 400);
+          probing = false;
+          if (writes.length || page.url() !== url || (await page.locator(LAYERS).filter({ visible: true }).count())) dirty = true;
+          const counts = new Map();
+          for (const w of writes) counts.set(w, (counts.get(w) ?? 0) + 1);
+          for (const [w, k] of counts) if (k > 1)
+            findings.push({ severity: "error", check: "double-submit", view: name, theme, viewport: vp, selector: `[button] ${info.said.slice(0, 50)}`, text: `a double click on «${info.said.slice(0, 50)}» sent ${w} ${k} times: disable it while its action runs`, screenshot: shotOf(name) });
+        } catch {
+          probing = false;
+          dirty = true;
+        }
+      }
+      noise.length = quiet;
     }
 
     for (const url of urls) {
@@ -153,6 +210,7 @@ for (const vp of viewports) {
         continue;
       }
       await checkView(name, url);
+      if (args.probe && vp === viewports[0] && theme === themes[0]) await probeView(name, url);
       if (args.tabs) {
         const labels = [];
         const tabs = page.locator(TABS).filter({ visible: true });
@@ -175,7 +233,6 @@ for (const vp of viewports) {
         }
       }
     }
-    const shotOf = (name) => views.find((v) => v.theme === theme && v.viewport === vp && v.name === name)?.screenshot ?? "";
     for (const n of noise) findings.push({ severity: "error", check: n.check, view: n.view ?? "", theme, viewport: vp, selector: "", text: n.text, screenshot: shotOf(n.view) });
     for (const b of blocked) findings.push({ severity: "warning", check: "blocked-write", view: "", theme, viewport: vp, selector: "", text: `${b} was blocked: ui-check never writes. If it is a read (GraphQL, search), add it to ui.allow_write`, screenshot: "" });
     await ctx.close();
@@ -196,7 +253,7 @@ const errors = result.filter((f) => f.severity === "error").length;
 const warnings = result.length - errors;
 writeFileSync(path.join(out, "ui-check.json"), JSON.stringify({
   version: 1, generated: new Date().toISOString(), urls, viewports, themes, tabs: !!args.tabs,
-  checks: ["cut-off-text", "unequal-spacing", "borderless-color", "visible-scrollbar", "native-control", "layer-outside-viewport", "horizontal-scroll", "console-error", "failed-request", "repeated-text", ...(cfg.chat_selector && cfg.panel_selector ? ["chat-repeats-panel"] : [])],
+  checks: ["cut-off-text", "unequal-spacing", "borderless-color", "visible-scrollbar", "native-control", "layer-outside-viewport", "horizontal-scroll", "console-error", "failed-request", "repeated-text", "unbounded-input", "focus-not-restored", ...(args.probe ? ["double-submit"] : []), ...(cfg.chat_selector && cfg.panel_selector ? ["chat-repeats-panel"] : [])],
   views, findings: result, summary: { errors, warnings },
 }, null, 2));
 

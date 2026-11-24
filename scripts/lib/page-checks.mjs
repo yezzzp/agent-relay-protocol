@@ -51,6 +51,15 @@ export function domChecks({ rootSelector, theme, chatSelector, panelSelector, ch
     add("error", "native-control", el, label(el));
   }
 
+  // Free text with no length limit: a paste of 10 000 characters reaches the API and breaks the layout.
+  const textSel = 'input:not([type]), input[type="text"], input[type="search"], input[type="email"], input[type="tel"], input[type="url"], textarea';
+  for (const el of root.querySelectorAll(textSel)) {
+    if (el.maxLength >= 0 || el.readOnly || el.disabled || el.closest("[data-ui-unbounded-ok]")) continue;
+    if (!visible(el) || covered(el)) continue;
+    const name = el.getAttribute("aria-label") || el.labels?.[0]?.innerText || el.placeholder || el.name || el.id || "";
+    add("warning", "unbounded-input", el, `<${el.tagName.toLowerCase()}> "${name.trim().replace(/\s+/g, " ").slice(0, 50)}" has no maxlength`);
+  }
+
   const srOnly = (el) => el.getBoundingClientRect().width <= 1;
   for (const el of [root, ...root.querySelectorAll("*")]) {
     if (!visible(el) || srOnly(el)) continue;

@@ -53,6 +53,22 @@ check "no write request reached the server" '[ ! -s "$WRITE_LOG" ]'
 check "a blocked write is reported" 'jq -e ".findings[]|select(.check==\"blocked-write\" and (.text|test(\"menu-write\")))" "$J" >/dev/null'
 check "whole words only: «Assigned to» is still opened" '! grep -q "Assigned to" <<<"$(jq -r ".findings[]|select(.check==\"blocked-write\")|.text" "$J")"'
 
+
+# known failures: unbounded input, focus not restored, double submit (only with --probe)
+: > "$WRITE_LOG"
+OUT="$(cd "$WORK/project" && node "$REPO/scripts/ui-check.mjs" --url /behavior.html 2>&1)"
+check "unbounded input flagged" 'jq -e ".findings[]|select(.check==\"unbounded-input\" and (.text|test(\"Buscar\")))" "$J" >/dev/null'
+check "bounded input not flagged" '! jq -e ".findings[]|select(.check==\"unbounded-input\" and (.text|test(\"Nombre\")))" "$J" >/dev/null'
+check "focus not restored flagged" 'jq -e ".findings[]|select(.check==\"focus-not-restored\" and (.text|test(\"Filtros\")))" "$J" >/dev/null'
+check "restored focus not flagged" '! jq -e ".findings[]|select(.check==\"focus-not-restored\" and (.text|test(\"Columnas\")))" "$J" >/dev/null'
+check "no double-submit probe without --probe" '! jq -e ".findings[]|select(.check==\"double-submit\")" "$J" >/dev/null'
+OUT="$(cd "$WORK/project" && node "$REPO/scripts/ui-check.mjs" --probe --url /behavior.html 2>&1)"; CODE=$?
+check "double submit flagged" 'jq -e ".findings[]|select(.check==\"double-submit\" and .severity==\"error\" and (.text|test(\"Guardar pedido\")))" "$J" >/dev/null'
+check "guarded button not flagged" '! jq -e ".findings[]|select(.check==\"double-submit\" and (.text|test(\"Emitir nota\")))" "$J" >/dev/null'
+check "probe never writes" '[ ! -s "$WRITE_LOG" ]'
+check "probe never clicks sign out" '! jq -e ".findings[]|select(.text|test(\"logout\"))" "$J" >/dev/null'
+check "probe writes are not blocked-write noise" '! jq -e ".findings[]|select(.check==\"blocked-write\" and (.text|test(\"unguarded|guarded\")))" "$J" >/dev/null'
+
 cat >> "$WORK/project/.arp/config.toml" <<TOML
 [ui.login]
 url = "/login.html"
