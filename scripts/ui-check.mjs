@@ -129,6 +129,8 @@ for (const vp of viewports) {
           seen.add(key);
           await closeLayers();
           await t.scrollIntoViewIfNeeded();
+          // Held before the click: once the layer opens, nth(i) of the trigger list may point elsewhere.
+          const handle = await t.elementHandle();
           await t.click({ timeout: 2000 }).catch(() => { throw 0; });
           await page.waitForTimeout(300);
           if (page.url() !== home) { await page.goto(home, { waitUntil: "networkidle" }); continue; }
@@ -146,10 +148,14 @@ for (const vp of viewports) {
           // Libraries give focus back after their close animation: wait for it, up to a second.
           await page.locator(`[data-ui-check="${mark}"]`).waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
           if (!(await page.locator(`[data-ui-check="${mark}"]`).isVisible().catch(() => false))) {
-            const handle = await t.elementHandle().catch(() => null);
             const back = !handle || (await page.waitForFunction((el) => el === document.activeElement || el.contains(document.activeElement), handle, { timeout: 1000 }).then(() => true, () => false));
             if (!back) {
-              const now = await page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? "the page body" : `<${a.tagName.toLowerCase()}>`; });
+              const now = await page.evaluate(() => {
+                const a = document.activeElement;
+                if (!a || a === document.body) return "the page body";
+                const said = (a.getAttribute("aria-label") || a.innerText || "").trim().replace(/\s+/g, " ").slice(0, 40);
+                return `<${a.tagName.toLowerCase()}>${said ? ` «${said}»` : ""}`;
+              });
               items.push({ severity: "warning", check: "focus-not-restored", selector: `[trigger] ${key}`, text: `closing «${key}» with Escape left focus on ${now}, not on its trigger` });
             }
           }

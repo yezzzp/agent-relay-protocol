@@ -21,6 +21,9 @@ function openDialog(id, restore) {
 <label>Nombre <input type="text" maxlength="64" id="bounded"></label>
 <button aria-haspopup="dialog" onclick="openDialog('lost', false)">Filtros</button>
 <button aria-haspopup="dialog" onclick="openDialog('kept', true)">Columnas</button>
+<button aria-haspopup="dialog" id="gone">Aviso</button>
+<button aria-haspopup="dialog" onclick="document.getElementById('gone').remove(); openDialog('shift', true)">Vista</button>
+<div role="dialog" id="shift" hidden><input maxlength="10" aria-label="d"></div>
 <button aria-haspopup="dialog" onclick="openDialog('late', 'late')">Orden</button>
 <div role="dialog" id="late" hidden><input maxlength="10" aria-label="c"></div>
 <div role="dialog" id="lost" hidden><input maxlength="10" aria-label="a"></div>
