@@ -60,6 +60,7 @@ OUT="$(cd "$WORK/project" && node "$REPO/scripts/ui-check.mjs" --url /behavior.h
 check "unbounded input flagged" 'jq -e ".findings[]|select(.check==\"unbounded-input\" and (.text|test(\"Buscar\")))" "$J" >/dev/null'
 check "bounded input not flagged" '! jq -e ".findings[]|select(.check==\"unbounded-input\" and (.text|test(\"Nombre\")))" "$J" >/dev/null'
 check "focus not restored flagged" 'jq -e ".findings[]|select(.check==\"focus-not-restored\" and (.text|test(\"Filtros\")))" "$J" >/dev/null'
+check "focus restored after a close animation not flagged" '! jq -e ".findings[]|select(.check==\"focus-not-restored\" and (.text|test(\"Orden\")))" "$J" >/dev/null'
 check "restored focus not flagged" '! jq -e ".findings[]|select(.check==\"focus-not-restored\" and (.text|test(\"Columnas\")))" "$J" >/dev/null'
 check "no double-submit probe without --probe" '! jq -e ".findings[]|select(.check==\"double-submit\")" "$J" >/dev/null'
 OUT="$(cd "$WORK/project" && node "$REPO/scripts/ui-check.mjs" --probe --url /behavior.html 2>&1)"; CODE=$?

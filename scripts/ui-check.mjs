@@ -143,9 +143,11 @@ for (const vp of viewports) {
           const file = `${theme}-${vp}-${slug(view.name)}-layer-${String(i + 1).padStart(2, "0")}.jpg`;
           await page.screenshot({ path: path.join(out, file), type: "jpeg", quality: 85 });
           await page.keyboard.press("Escape");
-          await page.waitForTimeout(200);
+          // Libraries give focus back after their close animation: wait for it, up to a second.
+          await page.locator(`[data-ui-check="${mark}"]`).waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
           if (!(await page.locator(`[data-ui-check="${mark}"]`).isVisible().catch(() => false))) {
-            const back = await t.evaluate((el) => el === document.activeElement || el.contains(document.activeElement)).catch(() => true);
+            const handle = await t.elementHandle().catch(() => null);
+            const back = !handle || (await page.waitForFunction((el) => el === document.activeElement || el.contains(document.activeElement), handle, { timeout: 1000 }).then(() => true, () => false));
             if (!back) {
               const now = await page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? "the page body" : `<${a.tagName.toLowerCase()}>`; });
               items.push({ severity: "warning", check: "focus-not-restored", selector: `[trigger] ${key}`, text: `closing «${key}» with Escape left focus on ${now}, not on its trigger` });

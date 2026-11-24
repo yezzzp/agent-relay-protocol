@@ -8,7 +8,11 @@ async function guarded(b, p) { if (b.disabled) return; b.disabled = true; try { 
 function openDialog(id, restore) {
   const d = document.getElementById(id), t = document.activeElement;
   d.hidden = false; d.querySelector("input").focus();
-  d.onkeydown = (e) => { if (e.key !== "Escape") return; d.hidden = true; restore ? t.focus() : document.activeElement.blur(); };
+  d.onkeydown = (e) => {
+    if (e.key !== "Escape") return;
+    if (restore === "late") { d.hidden = true; document.activeElement.blur(); return setTimeout(() => t.focus(), 300); }
+    d.hidden = true; restore ? t.focus() : document.activeElement.blur();
+  };
 }
 </script>
 <button onclick="post('/api/unguarded')">Guardar pedido</button>
@@ -17,6 +21,8 @@ function openDialog(id, restore) {
 <label>Nombre <input type="text" maxlength="64" id="bounded"></label>
 <button aria-haspopup="dialog" onclick="openDialog('lost', false)">Filtros</button>
 <button aria-haspopup="dialog" onclick="openDialog('kept', true)">Columnas</button>
+<button aria-haspopup="dialog" onclick="openDialog('late', 'late')">Orden</button>
+<div role="dialog" id="late" hidden><input maxlength="10" aria-label="c"></div>
 <div role="dialog" id="lost" hidden><input maxlength="10" aria-label="a"></div>
 <div role="dialog" id="kept" hidden><input maxlength="10" aria-label="b"></div>
 <a href="/logout" onclick="post('/api/logout'); return false">Cerrar sesión</a>
