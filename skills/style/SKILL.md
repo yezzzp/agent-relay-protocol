@@ -67,6 +67,7 @@ Each one has been seen on real screens. Make it impossible in the shared compone
 | Draft lost | reload or Back erases a half-filled form or cart | the shared draft hook keeps it until it is saved or discarded | review |
 | Generic error | "Something went wrong" when the API said why | the shared request helper shows the API's message | review |
 | Native control | a raw select, checkbox or date input | the project's component, enforced by lint | `native-control` |
+| Ghost on hide | hiding a panel with `visibility` leaves children with `transition-all` on screen for their transition | the hidden state of the shared panel sets `transition: none` on itself and every descendant | review |
 
 **The list grows.** A finding that could happen on any screen of any product is a class, not a screen bug. Fix it in the shared component, add a lint rule if one can see it, and add a row here, in generic words: no product names or data.
 
