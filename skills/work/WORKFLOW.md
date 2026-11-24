@@ -16,6 +16,7 @@ This applies to every task in this project. Where the project's `AGENTS.md` or `
 3. **Build.** Name the data shape first. No comments that restate the code: only a *why* that cannot be encoded, pointing to where it is recorded.
 4. **Verify.** The project's quick verify command must pass. Your opinion does not replace the command.
 5. **Close.** Mark the task file. When the round is done, the session is done.
+6. **Hand it over on your port.** When a change the owner can see is verified, leave the branch's dev server running on its own port (`.arp/ports`) and give the owner the URL in the same message that says it is ready. Do it before you start the integration, not after: what works on the branch's port works on the integration branch, so the owner does not wait minutes for it.
 
 ## Sessions and subagents
 - **Session:** the owner will talk to it. **Subagent:** the owner will only read its result.
@@ -65,6 +66,7 @@ Before any UI work, load the `style` skill (base), then the project's brand laye
 <!-- piece:integrator -->
 ## Integration
 - `arp integrate <branch>`, in the background. Never merge by hand. If another integration is running it queues and goes in with the next batch. If it fails, fix it in your branch and run it again.
+- Once the branch lands, the integration stops its dev server: from then on the owner tries it on the integration branch's port. Say so in one line.
 - Production moves only when the owner says so: `arp release vN.x.y`.
 <!-- /piece -->
 
