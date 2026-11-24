@@ -67,6 +67,7 @@ Before any UI work, load the `style` skill (base), then the project's brand laye
 ## Integration
 - `arp integrate <branch>`, in the background. Never merge by hand. If another integration is running it queues and goes in with the next batch. If it fails, fix it in your branch and run it again.
 - Once the branch lands, the integration stops its dev server: from then on the owner tries it on the integration branch's port. Say so in one line.
+- Do not wait for the owner's approval to integrate: give the port and start the integration in the same turn. If the owner asks for changes, iterate and integrate again; the queue absorbs it. If the integration fails, fix it in the branch, tell the owner in one line what failed, and run it again.
 - Production moves only when the owner says so: `arp release vN.x.y`.
 <!-- /piece -->
 
