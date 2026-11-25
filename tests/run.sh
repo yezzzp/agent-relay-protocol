@@ -283,6 +283,15 @@ eq "creates the missing integration branch from production" \
   "$(git -C "$p" rev-parse --verify -q develop)" "$(git -C "$p" rev-parse main)"
 eq "keeps the current branch checked out" "$(git -C "$p" branch --show-current)" "main"
 
+p="$(newproj init-wt)"; git -C "$p" branch develop
+git -C "$p" worktree add -q "$WORK/init-wt-develop" develop
+( cd "$WORK/init-wt-develop" && "$AGENTINIT" --no-agent >/dev/null 2>&1 )
+has "in a worktree, names come from the main checkout" "$(cat "$WORK/init-wt-develop/.arp/config.toml")" 'db_prefix  = "init_wt_test_"'
+
+p="$(newproj init-graph)"; printf 'graphify-out/*\n!graphify-out/graph.json\n' > "$p/.gitignore"
+( cd "$p" && "$AGENTINIT" --no-agent >/dev/null 2>&1 )
+eq "keeps the project's own graphify-out rules" "$(grep -c '^graphify-out/$' "$p/.gitignore")" "0"
+
 p="$(newproj init-dry)"
 ( cd "$p" && "$AGENTINIT" --dry-run >/dev/null 2>&1 )
 [ -e "$p/.arp" ] && ko "--dry-run writes nothing" "created .arp/" || ok "--dry-run writes nothing"

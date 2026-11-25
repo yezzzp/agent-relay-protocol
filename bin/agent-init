@@ -83,7 +83,13 @@ toml_str() {
 
 # --- 0. context --------------------------------------------------------------
 PROJECT_DIR="$(pwd)"
-PROJECT_NAME="$(basename "$PROJECT_DIR")"
+# In a worktree the folder is named after the branch; the project is the main checkout.
+COMMON_DIR="$(git -C "$PROJECT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ "$(basename "$COMMON_DIR")" = ".git" ]; then
+  PROJECT_NAME="$(basename "$(dirname "$COMMON_DIR")")"
+else
+  PROJECT_NAME="$(basename "$PROJECT_DIR")"
+fi
 
 printf '%sAgent Relay Protocol%s %s· %s%s\n' \
   "$C_BOLD" "$C_OFF" "$C_DIM" "$PROJECT_NAME" "$C_OFF"
@@ -131,7 +137,16 @@ else
   fi
 fi
 
-inject_block "$PROJECT_DIR/.gitignore" "$TPL/gitignore-block.txt"
+GITIGNORE_BLOCK="$TPL/gitignore-block.txt"
+# A project that already rules graphify-out (e.g. tracks graph.json) keeps its rules:
+# the block's blanket ignore would come later and win.
+if [ -f "$PROJECT_DIR/.gitignore" ] && awk '/ARP:BEGIN/{s=1} !s{print} /ARP:END/{s=0}' "$PROJECT_DIR/.gitignore" \
+     | grep -qE '^!?/?graphify-out'; then
+  GITIGNORE_BLOCK="$(mktemp)"
+  grep -vE '^graphify-out/?$' "$TPL/gitignore-block.txt" > "$GITIGNORE_BLOCK"
+  trap 'rm -f "$GITIGNORE_BLOCK"' EXIT
+fi
+inject_block "$PROJECT_DIR/.gitignore" "$GITIGNORE_BLOCK"
 if [ "$DRY" -eq 0 ]; then ok ".gitignore ${C_DIM}(.arp/ ignored except config.toml and flows.toml)${C_OFF}"; fi
 
 # --- 2.5 working charter files: .arp/config.toml and .arp/flows.toml ---------
