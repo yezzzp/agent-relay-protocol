@@ -21,6 +21,7 @@ This applies to every task in this project. Where the project's `AGENTS.md` or `
 ## Sessions and subagents
 - **Session:** the owner will talk to it. **Subagent:** the owner will only read its result.
 - A subagent brief points to the task file and its S#, never a pasted spec. Its report is at most 20 lines, with details in a file.
+- Subagents run on Sonnet: pass `model: "sonnet"` on every one you launch, unless the owner names another model for that task.
 - Collect questions for the owner and ask them together, at the end of the round.
 
 ## Autonomy and replies
