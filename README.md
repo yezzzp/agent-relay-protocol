@@ -51,7 +51,7 @@ Adopting everything runs:
 agent-init
 ```
 
-It sets **how the project works** before any feature: verify commands, main user flows (`.arp/flows.toml`), the business rules that get TDD, ports and branches. It writes `AGENTS.md`, `CLAUDE.md`, `.arp/config.toml` and `.arp/flows.toml`. The config keys:
+`arp adopt` already runs its deterministic part (`agent-init --no-agent`): it creates the integration branch from the production one if it is missing (local, never pushed) and writes the `.arp` files with what it detects. `agent-init` alone adds the interview. It sets **how the project works** before any feature: verify commands, main user flows (`.arp/flows.toml`), the business rules that get TDD, ports and branches. It writes `AGENTS.md`, `CLAUDE.md`, `.arp/config.toml` and `.arp/flows.toml`. The config keys:
 
 | Key | Meaning |
 |---|---|

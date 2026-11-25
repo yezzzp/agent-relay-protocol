@@ -277,9 +277,16 @@ echo 'quick = "mine"' > "$p/.arp/config.toml"
 ( cd "$p" && "$AGENTINIT" --no-agent >/dev/null 2>&1 )
 eq "never rewrites an existing config.toml" "$(cat "$p/.arp/config.toml")" 'quick = "mine"'
 
+p="$(newproj init-branch)"
+( cd "$p" && "$AGENTINIT" --no-agent >/dev/null 2>&1 )
+eq "creates the missing integration branch from production" \
+  "$(git -C "$p" rev-parse --verify -q develop)" "$(git -C "$p" rev-parse main)"
+eq "keeps the current branch checked out" "$(git -C "$p" branch --show-current)" "main"
+
 p="$(newproj init-dry)"
 ( cd "$p" && "$AGENTINIT" --dry-run >/dev/null 2>&1 )
 [ -e "$p/.arp" ] && ko "--dry-run writes nothing" "created .arp/" || ok "--dry-run writes nothing"
+git -C "$p" rev-parse --verify -q develop >/dev/null && ko "--dry-run creates no branch" "develop exists" || ok "--dry-run creates no branch"
 
 # --- installer ----------------------------------------------------------------
 

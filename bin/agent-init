@@ -175,6 +175,20 @@ DB_PREFIX="$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed -e '
 B_INT="$(detect_branch develop develop dev integration)"
 B_PROD="$(detect_branch main main master trunk)"
 V_QUICK="${V_QUICK//\{integration\}/$B_INT}"
+
+# worktrees and integrate start from the integration branch: without it nothing works.
+# Local only; pushing it is the owner's call.
+has_branch() { git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$1" 2>/dev/null; }
+if ! has_branch "$B_INT"; then
+  if ! has_branch "$B_PROD"; then
+    warn "no '$B_PROD' branch to start '$B_INT' from: create it by hand"
+  elif [ "$DRY" -eq 1 ]; then
+    printf '  %s(dry) would create branch %s from %s%s\n' "$C_DIM" "$B_INT" "$B_PROD" "$C_OFF"
+  else
+    git -C "$PROJECT_DIR" branch "$B_INT" "$B_PROD"
+    ok "branch $B_INT created from $B_PROD ${C_DIM}(local; push it with: git push -u origin $B_INT)${C_OFF}"
+  fi
+fi
 COPY='".env"'; [ -n "$TEST_MAP" ] && COPY="$COPY, \"$TEST_MAP\""
 
 fill() { # fill <template> <KEY=value>... — prints the template with the values in

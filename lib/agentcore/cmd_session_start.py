@@ -75,7 +75,8 @@ def sessions_count(root: Path, soft: int) -> str:
 def project_lines(root: Path) -> list[str]:
     project = load_project(root)
     if project is None or not project.has_config:
-        return ["No `.arp/config.toml` yet: use the commands in AGENTS.md or README."]
+        return ["No `.arp/config.toml` yet: run `agent-init --no-agent` (it also creates the integration branch), "
+                "then fill its TODOs."]
     c = project.config
     lines = [f"- {k}: `{v}`" for k, v in c["verify"].items() if v]
     lines.append(f"- branches: integration `{c['branches']['integration']}`, production `{c['branches']['production']}`")
@@ -131,8 +132,8 @@ def ask_lines(facts: dict) -> list[str]:
         "",
         "Before the first task, ask the owner ONCE with AskUserQuestion whether this project uses",
         "agent-core's way of working (worktrees, tests chosen before code, scripted integration, memory):",
-        "1. Adopt everything: run `arp adopt`, then offer `agent-init` to fill only what is missing.",
-        "   Existing files win; nothing in the repo is written without the owner's yes.",
+        "1. Adopt everything: run `arp adopt`. It creates the integration branch and the missing",
+        "   .arp files (existing files win); then offer `agent-init` to fill the TODOs with the owner.",
         "2. Choose pieces (multi-select: workflow, worktrees, integrator, tests, ui-check, style, memory,",
         "   relay): run `arp adopt --state partial --pieces <list>`.",
         "3. Not in this project: run `arp decline`. Say it can be undone with `arp audit`.",

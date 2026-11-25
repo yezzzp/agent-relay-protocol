@@ -47,7 +47,9 @@ hasnt "partial: no integration section" "$out" "## Integration"
 in_repo "$r" adopt >/dev/null
 out="$(hook "$r")"
 has   "adopted: full workflow" "$out" "## Integration"
-has   "adopted: no config hint" "$out" "No \`.arp/config.toml\` yet"
+[ -f "$r/.arp/config.toml" ] && ok "adopt writes .arp/config.toml" || ko "adopt writes .arp/config.toml" "missing"
+git -C "$r" rev-parse --verify -q develop >/dev/null && ok "adopt creates the integration branch" || ko "adopt creates the integration branch" "no develop"
+has   "adopt keeps the existing CLAUDE.md" "$(cat "$r/CLAUDE.md")" "We use worktrees."
 
 mkdir -p "$r/.arp" "$r/docs/ai/tasks"
 printf '[verify]\nquick = "make check"\n' > "$r/.arp/config.toml"
