@@ -46,6 +46,13 @@ S1. «<owner's words, verbatim>»
 L1. <date> request received
 ```
 
+## Rounds with builders
+For big work with several tasks:
+1. **Plan with the owner.** Before planning a new feature, list what the industry expects of it (for a chatbot: streaming, files, voice, errors, limits, history) and sort it into *now*, *later* and *out on purpose*. Ask only the decisions that are the owner's. Each task in the plan names its files, the interfaces it shares and its test.
+2. **Build.** Once the owner approves, launch one `agent-core:builder` per task, in one message, with `isolation: "worktree"`. Tasks that touch the same files go to the same builder, or run one after another.
+3. **Review.** Read each diff against its S#, run the verify command yourself, and send fixes back to the same builder with SendMessage.
+4. **Integrate.** Merge the builders' branches into the task branch, verify once more, then `arp integrate`.
+
 ## Subagents
 - Use one when the owner will only read the result. Brief it with:
   - the goal;

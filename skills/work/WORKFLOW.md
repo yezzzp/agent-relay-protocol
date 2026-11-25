@@ -21,7 +21,11 @@ This applies to every task in this project. Where the project's `AGENTS.md` or `
 ## Sessions and subagents
 - **Session:** the owner will talk to it. **Subagent:** the owner will only read its result.
 - A subagent brief points to the task file and its S#, never a pasted spec. Its report is at most 20 lines, with details in a file.
-- Subagents run on Sonnet: pass `model: "sonnet"` on every one you launch, unless the owner names another model for that task.
+- The session runs on the model the owner chose. It plans, reviews and integrates; it does not hand those to a subagent.
+- Lookups go to `agent-core:explorer` (Haiku). Do a lookup of two or three calls yourself: a subagent starts with no context and costs more.
+- Building goes to `agent-core:builder` (Sonnet), one per task of the approved plan, with `isolation: "worktree"`. Launch them together when their files do not overlap.
+- Any other subagent runs on Sonnet: pass `model: "sonnet"`. The owner can name another model for a task.
+- Before integrating, review every builder's diff and run the verify command yourself, then merge their branches into the task branch and run `arp integrate`.
 - Collect questions for the owner and ask them together, at the end of the round.
 
 ## Autonomy and replies
